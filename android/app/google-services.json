@@ -1,0 +1,118 @@
+{
+  "project_info": {
+    "project_number": "221292665960",
+    "project_id": "otakulink-1d1d8",
+    "storage_bucket": "otakulink-1d1d8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:221292665960:android:2311e9ebf206190e742fdd",
+        "android_client_info": {
+          "package_name": "com.example.otakulink"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "221292665960-57hqadd55mn9qajo205mb4j4uj6hehad.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAxykTo-7i4q9OC-kWYj82mPHhC84Nbfko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "221292665960-57hqadd55mn9qajo205mb4j4uj6hehad.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "221292665960-jpn90l2dmjf3r6s9fmdi1bna9rtphkng.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.otakulink"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:221292665960:android:ada8fe0f32f3b6e3742fdd",
+        "android_client_info": {
+          "package_name": "com.otakulink.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "221292665960-57hqadd55mn9qajo205mb4j4uj6hehad.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAxykTo-7i4q9OC-kWYj82mPHhC84Nbfko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "221292665960-57hqadd55mn9qajo205mb4j4uj6hehad.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "221292665960-jpn90l2dmjf3r6s9fmdi1bna9rtphkng.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.otakulink"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:221292665960:android:633abfee6de9a2c1742fdd",
+        "android_client_info": {
+          "package_name": "com.yomuclub.otakulink"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "221292665960-57hqadd55mn9qajo205mb4j4uj6hehad.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAxykTo-7i4q9OC-kWYj82mPHhC84Nbfko"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "221292665960-57hqadd55mn9qajo205mb4j4uj6hehad.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "221292665960-jpn90l2dmjf3r6s9fmdi1bna9rtphkng.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.otakulink"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
