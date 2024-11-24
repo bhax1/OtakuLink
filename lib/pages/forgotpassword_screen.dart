@@ -16,6 +16,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   // Send reset link logic using Firebase Auth
   void _sendResetLink() async {
     if (_formKey.currentState!.validate()) {
+      // Dismiss the keyboard
+      FocusScope.of(context).unfocus();
+      
       setState(() {
         _isLoading = true;
       });
@@ -71,7 +74,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       appBar: AppBar(
         backgroundColor: primaryColor,
       ),
-      resizeToAvoidBottomInset: false, // Avoid resizing on keyboard display
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // Background Image

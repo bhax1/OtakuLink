@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:otakulink/main.dart';
 import 'login_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -25,12 +26,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  final primaryColor = Color(0xFF33415C);
+  // Color for consistent styling
+  final primaryColor = Color(0xFF33415C); // Update this if needed
 
   // Sign up method
   Future<void> _signUp() async {
     if (_formKey.currentState!.validate()) {
-      // Show "Logging in..." snackbar
+      // Dismiss the keyboard
+      FocusScope.of(context).unfocus();
+
+      // Show "Signing up..." snackbar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Signing up..."),
@@ -110,8 +115,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           }
         });
 
-        // Navigate to the login screen after successful signup
-        Navigator.of(context).push(_createRoute());
+        // Navigate to the login screen after successful signup with fade transition
+        Navigator.of(context).push(_createFadeTransitionRoute());
       } on FirebaseAuthException catch (e) {
         String errorMessage = e.message ?? 'An error occurred';
         if (e.code == 'invalid-email') {
@@ -138,7 +143,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Center(
@@ -308,31 +312,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
         Text('Already have an account?'),
         TextButton(
           onPressed: () {
-            Navigator.of(context).push(_createRoute());
+            Navigator.of(context).push(_createFadeTransitionRoute());
           },
           child: Text(
-            'Log In',
-            style: TextStyle(color: Colors.orangeAccent),
+            'Login',
+            style: TextStyle(color: accentColor),
           ),
         ),
       ],
     );
   }
 
-  Route _createRoute() {
+  // Create a fade transition route to LoginScreen
+  PageRouteBuilder _createFadeTransitionRoute() {
     return PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => LoginScreen(),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         const begin = 0.0;
         const end = 1.0;
         const curve = Curves.easeInOut;
-        var tween =
-            Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-        var opacityAnimation = animation.drive(tween);
 
-        return FadeTransition(opacity: opacityAnimation, child: child);
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var fadeAnimation = animation.drive(tween);
+
+        return FadeTransition(opacity: fadeAnimation, child: child);
       },
-      transitionDuration: Duration(milliseconds: 300),
     );
   }
 }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'login_screen.dart'; // Import the LoginScreen
+import 'package:google_nav_bar/google_nav_bar.dart';
+import 'package:otakulink/home_navbar/home.dart';
+import 'package:otakulink/home_navbar/profile.dart';
+import 'package:otakulink/home_navbar/search.dart';
+import 'package:otakulink/main.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -10,67 +13,66 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Firebase Authentication instance
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  int _selectedIndex = 0;
+  
+  static final List<Widget> _pages = <Widget>[
+    HomePage(),
+    SearchPage(),
+    ProfilePage(),
+  ];
 
-  // Fetch the current user
-  User? _user;
-
-  @override
-  void initState() {
-    super.initState();
-    _getCurrentUser();
-  }
-
-  // Get the current user from Firebase Auth
-  void _getCurrentUser() {
-    final user = _auth.currentUser;
+  void _onItemTapped(int index) {
     setState(() {
-      _user = user;
+      _selectedIndex = index;
     });
-  }
-
-  // Log out the user
-  Future<void> _logout() async {
-    await _auth.signOut();
-    // Navigate to LoginScreen after logout
-    Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => LoginScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
-    // If the user is not logged in, show a loading indicator
-    if (_user == null) {
-      return Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    // Display the home screen with the logged-in user's name and logout button
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Home Screen'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: _logout,
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('Hello, ${_user!.displayName ?? _user!.email}!'),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _logout,
-              child: Text('Logout'),
+      resizeToAvoidBottomInset: true, 
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(60), // Adjust the height as needed
+        child: AppBar(
+          backgroundColor: primaryColor,
+          automaticallyImplyLeading: false,
+          title: Center(
+            child: Image.asset(
+              'assets/logo/logo_flat2.png',
+              height: 100,
             ),
-          ],
+          ),
+        ),
+      ),
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: Container(
+        color: primaryColor,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 10),
+          child: GNav(
+            gap: 8,
+            backgroundColor: primaryColor,
+            color: Colors.white,
+            activeColor: accentColor,
+            tabBackgroundColor: secondaryColor,
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            tabs: [
+              GButton(
+                icon: Icons.home,
+                text: 'Home',
+              ),
+              GButton(
+                icon: Icons.search,
+                text: 'Search',
+              ),
+              GButton(
+                icon: Icons.person,
+                text: 'Profile',
+              ),
+            ],
+            selectedIndex: _selectedIndex,
+            onTabChange: _onItemTapped,
+          ),
         ),
       ),
     );

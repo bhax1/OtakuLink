@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:otakulink/authenticator.dart';
 import 'package:otakulink/firebase_options.dart';
 
+final Color primaryColor = Color(0xFF33415C);  // Main color
+final Color accentColor = Colors.orangeAccent;  // Accent color
+final Color backgroundColor = Colors.white;  // Background color
+final Color secondaryColor = Colors.grey.shade200;  // Light grey for sections
+final Color textColor = Colors.black87;  // Text color
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -16,9 +22,21 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Authenticator(),
+      theme: ThemeData(
+        primaryColor: primaryColor,
+        hintColor: accentColor,
+        scaffoldBackgroundColor: backgroundColor,
+        textTheme: TextTheme(
+          bodyLarge: TextStyle(color: textColor),
+          bodyMedium: TextStyle(color: textColor),
+          titleLarge: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        cardColor: secondaryColor,  // Set card background color
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: const Authenticator(),
     );
   }
 }

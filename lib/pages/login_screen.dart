@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:otakulink/main.dart';
 import 'package:otakulink/pages/home_screen.dart';
 import 'forgotpassword_screen.dart';
 import 'signup_screen.dart';
@@ -27,6 +28,9 @@ class _LoginScreenState extends State<LoginScreen> {
   // Login logic
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
+      // Dismiss the keyboard
+      FocusScope.of(context).unfocus();
+
       // Show "Logging in..." snackbar
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -52,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
             SnackBar(content: Text('Please verify your email first.')),
           );
         } else {
-          // Navigate to HomeScreen
+          // Navigate to HomeScreen with smooth transition
           Navigator.of(context).push(
             _createFadeTransitionRoute(HomeScreen()),
           );
@@ -78,12 +82,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Color(0xFF33415C); // Branding color
-    final accentColor = Colors.orangeAccent;
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
+      backgroundColor: backgroundColor,
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Center(
@@ -95,13 +95,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   // Logo
                   Image.asset(
-                    'assets/logo/logo_flat.png',
+                    'assets/logo/logo_flat1.png',
                     height: 150,
                     width: 150,
                   ),
                   SizedBox(height: 20),
                   // Welcome text
-                  _buildWelcomeText(primaryColor),
+                  _buildWelcomeText(),
                   SizedBox(height: 30),
                   // Email input field
                   _buildEmailField(),
@@ -110,13 +110,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   _buildPasswordField(),
                   SizedBox(height: 1),
                   // Forgot password link
-                  _buildForgotPasswordLink(accentColor),
+                  _buildForgotPasswordLink(),
                   SizedBox(height: 10),
                   // Log in button
-                  _buildLoginButton(primaryColor),
+                  _buildLoginButton(),
                   SizedBox(height: 20),
                   // Sign-up link
-                  _buildSignUpLink(accentColor),
+                  _buildSignUpLink(),
                 ],
               ),
             ),
@@ -127,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Welcome text widget
-  Widget _buildWelcomeText(Color primaryColor) {
+  Widget _buildWelcomeText() {
     return Text(
       'Welcome to OtakuLink',
       textAlign: TextAlign.center,
@@ -196,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Forgot password link widget
-  Widget _buildForgotPasswordLink(Color accentColor) {
+  Widget _buildForgotPasswordLink() {
     return Align(
       alignment: Alignment.centerRight,
       child: TextButton(
@@ -215,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Log in button widget with loading state
-  Widget _buildLoginButton(Color primaryColor) {
+  Widget _buildLoginButton() {
     return ElevatedButton(
       onPressed: _isLoading ? null : _login, // Disable button if loading
       style: ElevatedButton.styleFrom(
@@ -239,7 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Sign-up link widget
-  Widget _buildSignUpLink(Color accentColor) {
+  Widget _buildSignUpLink() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -276,8 +276,6 @@ class _LoginScreenState extends State<LoginScreen> {
       },
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (context, animation, secondaryAnimation) {
-        // Add a small delay for initialization, if necessary
-        Future.delayed(Duration(milliseconds: 50));
         return screen;
       },
     );
