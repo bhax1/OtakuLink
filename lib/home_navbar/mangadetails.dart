@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -28,6 +29,7 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
   String _originalReadingStatus = 'Not Yet';
 
   Map<String, dynamic>? mangaDetails;
+  TextEditingController _commentaryController = TextEditingController(); // Controller for commentary
 
   @override
   void initState() {
@@ -77,7 +79,7 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     }
   }
 
-  // Save the changes (rating, favorite, and reading status)
+  // Save the changes (rating, favorite, reading status, and commentary)
   Future<void> _saveMangaDetails() async {
     // Check if any changes were made
     if (_rating == _originalRating &&
@@ -108,6 +110,9 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
       'isFavorite': _isFavorite,
       'readingStatus': _readingStatus,
       'genres': genresList,  // Add genres list here
+      'commentary': _commentaryController.text.isNotEmpty
+          ? _commentaryController.text
+          : '',  // Save commentary if provided
     });
 
     setState(() => _isLoading = false);
@@ -180,14 +185,16 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
 
     // Extract manga details
     final author = mangaDetails?['authors']?.first['name'] ?? 'Unknown Author';
-    final publisher = mangaDetails?['serializations']?.first['name'] ?? 'Unknown Publisher';
+    final publisher = mangaDetails?['serializations'] != null && mangaDetails!['serializations'].isNotEmpty
+    ? mangaDetails!['serializations'].first['name']
+    : 'Unknown Publisher';
     final status = mangaDetails?['status'] ?? 'Unknown Status';
     final description = mangaDetails?['synopsis'] ?? 'No description available';
     final genres = mangaDetails?['genres']
             ?.map((genre) => genre['name'])
-            .join(', ') ??
-        'No genres available';
+            .join(', ') ?? 'No genres available';
     final chapters = mangaDetails?['chapters'] ?? 'Ongoing';
+    final type = mangaDetails?['type'] ?? 'Unknown';
     final publishedFrom = mangaDetails?['published']['from'] != null
         ? formatDate(mangaDetails?['published']['from'])
         : 'Unknown';
@@ -202,96 +209,135 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
           mangaDetails?['title'] ?? 'Manga Details',
           style: const TextStyle(color: Colors.white),
         ),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (mangaDetails?['images'] != null)
-              Image.network(mangaDetails!['images']['jpg']['large_image_url']),
-            const SizedBox(height: 16.0),
-
-            // Manga title and basic info
-            Center(
-              child: Text(
-                mangaDetails?['title'] ?? 'Unknown Title',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: primaryColor,
+      body: GestureDetector(
+        onTap: () {
+          // Unfocus the text field when tapping outside of it
+          FocusScope.of(context).unfocus();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (mangaDetails?['images'] != null)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: CachedNetworkImage(
+                    imageUrl: mangaDetails!['images']['jpg']['large_image_url'],
+                    placeholder: (context, url) => SizedBox(
+                      width: 150,
+                      height: 480,
+                      child: Center(
+                        child: Icon(
+                          Icons.image,
+                          size: 50,
+                          color: accentColor,
+                        ),
+                      ),
                     ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text('Author: $author', style: TextStyle(fontSize: 16, color: primaryColor)),
-            Text('Publisher: $publisher', style: TextStyle(fontSize: 16, color: primaryColor)),
-            Text('Status: $status', style: TextStyle(fontSize: 16, color: primaryColor)),
-            Text('Genres: $genres', style: TextStyle(fontSize: 16, color: primaryColor)),
-            Text('Chapters: $chapters', style: TextStyle(fontSize: 16, color: primaryColor)),
-            Text('Published: $publishedFrom to $publishedTo', style: TextStyle(fontSize: 14, color: primaryColor)),
-            const SizedBox(height: 16),
-            Text(description, style: TextStyle(fontSize: 14, color: Colors.black87)),
-            const SizedBox(height: 16),
-
-            // User's rating, reading status, and favorite options
-            Text('Your Rating: $_rating', style: TextStyle(fontSize: 16, color: primaryColor)),
-            Slider(
-              value: _rating,
-              min: 0,
-              max: 10,
-              divisions: 10,
-              label: _rating.toString(),
-              onChanged: (value) {
-                setState(() {
-                  _rating = value;
-                });
-              },
-            ),
-            Row(
-              children: [
-                Text('Reading Status: ', style: TextStyle(fontSize: 16, color: primaryColor)),
-                DropdownButton<String>(
-                  value: _readingStatus,
-                  alignment: Alignment.center,
-                  dropdownColor: backgroundColor,
-                  onChanged: (String? newStatus) {
-                    setState(() {
-                      _readingStatus = newStatus ?? 'Not Yet';
-                    });
-                  },
-                  items: <String>['Not Yet', 'Dropped', 'Finished', 'Reading']
-                      .map<DropdownMenuItem<String>>((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    );
-                  }).toList(),
+                    errorWidget: (context, url, error) => const Icon(
+                      Icons.error,
+                      size: 50,
+                      color: Colors.red,
+                    ),
+                    fit: BoxFit.cover, // Adjust based on your design
+                  ),
                 ),
-              ],
-            ),
-            Row(
-              children: [
-                Text('Favorite:', style: TextStyle(fontSize: 16, color: primaryColor)),
-                Checkbox(
-                  value: _isFavorite,
-                  onChanged: (bool? value) {
-                    setState(() {
-                      _isFavorite = value ?? false;
-                    });
-                  },
-                ),
-              ],
-            ),
+              const SizedBox(height: 16.0),
 
-            // Save button
-            Center(
-              child: ElevatedButton(
-                onPressed: _saveMangaDetails,
-                style: ElevatedButton.styleFrom(backgroundColor: backgroundColor),
-                child: const Text('Save Details'),
+              // Manga title and basic info
+              Center(
+                child: Text(
+                  mangaDetails?['title'] ?? 'Unknown Title',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: primaryColor,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text('Author: $author', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Publisher: $publisher', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Status: $status', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Genres: $genres', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Chapters: $chapters', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Type: $type', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Published: $publishedFrom to $publishedTo', style: TextStyle(fontSize: 14, color: primaryColor)),
+
+              const SizedBox(height: 16),
+              Text(description, style: TextStyle(fontSize: 14, color: Colors.black87)),
+              const SizedBox(height: 16),
+
+              // User's rating, reading status, and favorite options
+              Text('Your Rating: $_rating', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Slider(
+                value: _rating,
+                min: 0,
+                max: 10,
+                divisions: 10,
+                label: _rating.toString(),
+                activeColor: primaryColor,
+                inactiveColor: accentColor,
+                onChanged: (double value) {
+                  setState(() {
+                    _rating = value;
+                  });
+                },
+              ),
+              Text('Your Reading Status: $_readingStatus', style: TextStyle(fontSize: 16, color: primaryColor)),
+              DropdownButton<String>(
+                alignment: Alignment.center,
+                dropdownColor: backgroundColor,
+                value: _readingStatus,
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _readingStatus = newValue!;
+                  });
+                },
+                items: <String>['Not Yet', 'Reading', 'Completed', 'Dropped']
+                    .map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+              ),
+              Row(
+                children: [
+                  Text('Favorite', style: TextStyle(fontSize: 16, color: primaryColor)),
+                  Checkbox(
+                    value: _isFavorite,
+                    onChanged: (bool? value) {
+                      setState(() {
+                        _isFavorite = value!;
+                      });
+                    },
+                  ),
+                ],
+              ),
+
+              // Commentary
+              TextField(
+                controller: _commentaryController,
+                decoration: InputDecoration(labelText: 'Add Commentary'),
+                maxLines: null,
+              ),
+
+              const SizedBox(height: 16),
+              Center(
+                child: ElevatedButton(
+                  onPressed: _saveMangaDetails,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: backgroundColor,
+                  ),
+                  child: const Text('Save Changes'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

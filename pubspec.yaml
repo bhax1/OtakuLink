@@ -32,7 +32,11 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   auto_size_text: ^3.0.0
-  intl: ^0.18.0
+  intl: ^0.19.0
+  cached_network_image: ^3.4.1
+  hive: ^2.0.5
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.5
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -48,6 +52,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_launcher_icons: "^0.14.1"
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.13
 
 flutter_icons:
   android: true
@@ -84,9 +90,13 @@ flutter:
     - assets/logo/logo_flat.png
     - assets/logo/logo_flat1.png
     - assets/logo/logo_flat2.png
+    - assets/logo/logo_flat_white.png
+    - assets/logo/logo_flat_accent.png
     - assets/background/bg_fp.png
     - assets/gif/signup.gif
+    - assets/gif/loading.gif
     - assets/pic/sorry.png
+    - assets/pic/default_avatar.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

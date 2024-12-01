@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:otakulink/main.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -73,6 +74,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       resizeToAvoidBottomInset: false,
       body: Stack(
@@ -101,6 +103,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
             ),
           ),
+          // Disable the whole screen while loading
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: accentColor),
+                    SizedBox(height: 20),
+                    Text(
+                      'Sending link...',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -144,30 +168,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   // Action button widget
   Widget _buildActionButton(Color primaryColor) {
-    return _isLoading
-        ? Center(
-            child: CircularProgressIndicator(
-              color: primaryColor,
-            ),
-          )
-        : ElevatedButton(
-            onPressed: _sendResetLink,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              padding: EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: Text(
-              'Send Reset Link',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          );
+    return ElevatedButton(
+      onPressed: _sendResetLink,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: primaryColor,
+        padding: EdgeInsets.symmetric(vertical: 15),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+      child: Text(
+        'Send Reset Link',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   @override

@@ -1,16 +1,19 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:otakulink/authenticator.dart';
 import 'package:otakulink/firebase_options.dart';
 
-final Color primaryColor = Color(0xFF33415C);  // Main color
-final Color accentColor = Colors.orangeAccent;  // Accent color
-final Color backgroundColor = Colors.white;  // Background color
-final Color secondaryColor = Colors.grey.shade200;  // Light grey for sections
-final Color textColor = Colors.black87;  // Text color
+final Color primaryColor = Color(0xFF33415C);
+final Color accentColor = Colors.orangeAccent;
+final Color backgroundColor = Colors.white;
+final Color secondaryColor = Colors.grey.shade200;
+final Color textColor = Colors.black87;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  await Hive.openBox('userCache');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -33,7 +36,7 @@ class MyApp extends StatelessWidget {
           bodyMedium: TextStyle(color: textColor),
           titleLarge: TextStyle(color: textColor, fontSize: 24, fontWeight: FontWeight.bold),
         ),
-        cardColor: secondaryColor,  // Set card background color
+        cardColor: secondaryColor,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const Authenticator(),

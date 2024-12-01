@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:otakulink/home_navbar/mangadetails.dart';
+import 'package:otakulink/main.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -13,29 +16,53 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late Future<List<dynamic>> topManga;
-  late Future<List<dynamic>> featuredManga;
+  late Future<List<dynamic>> popularManga;
+  late Future<List<dynamic>> popularManhwa;
+
+  int mangaPage = 1;
+  int manhwaPage = 1;
+
+  // Caching data for pagination
+  Map<int, List<dynamic>> cachedManga = {};
+  Map<int, List<dynamic>> cachedManhwa = {};
 
   @override
   void initState() {
     super.initState();
-    topManga = fetchMangaData('https://api.jikan.moe/v4/top/manga?type=manga&filter=bypopularity&limit=10');
-    featuredManga = fetchMangaData('https://api.jikan.moe/v4/top/manga?type=manga&filter=favorite&limit=10');
+    popularManga = _getData('manga', mangaPage);
+    popularManhwa = _getData('manhwa', manhwaPage);
   }
 
-  // Fetch manga data from the API
-  Future<List<dynamic>> fetchMangaData(String url) async {
+  // Fetch data with caching mechanism
+  Future<List<dynamic>> _getData(String type, int page) async {
+    var box = await Hive.openBox('mangaCache');  // Open a Hive box
+
+    final cacheKey = '$type$page';
+    final cachedData = box.get(cacheKey);
+    final cachedTimestamp = box.get('$cacheKey-timestamp');
+
+    if (cachedData != null && cachedTimestamp != null && DateTime.now().millisecondsSinceEpoch - cachedTimestamp < 86400000) {
+      return List<dynamic>.from(json.decode(cachedData));
+    }
+
+    final url = 'https://api.jikan.moe/v4/top/manga?type=$type&filter=bypopularity&limit=10&page=$page';
     final response = await http.get(Uri.parse(url));
+
     if (response.statusCode == 200) {
-      var data = json.decode(response.body);
-      return data['data'];
+      var data = json.decode(response.body)['data'];
+
+      // Store the fetched data and timestamp in Hive
+      box.put(cacheKey, json.encode(data));
+      box.put('$cacheKey-timestamp', DateTime.now().millisecondsSinceEpoch);
+
+      return data;
     } else {
-      throw Exception('Failed to load manga');
+      throw Exception('Failed to load $type');
     }
   }
 
-  // Reusable widget for displaying manga categories
-  Widget buildMangaCategory(String title, Future<List<dynamic>> mangaData) {
+  // Reusable widget for displaying categories (Manga/Manhwa/Manhua)
+  Widget buildCategory(String title, Future<List<dynamic>> data, String categoryType) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -47,65 +74,128 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 10),
         FutureBuilder<List<dynamic>>(
-          future: mangaData,
+          future: data,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return _buildMangaPlaceholderRow(); // Placeholder while loading
+              return _buildPlaceholderRow();
             } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-              return _buildMangaPlaceholderRow(); // Hollow cards in case of error or no data
+              return _buildErrorRow();
             } else {
-              return SizedBox(
-                height: 240,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: snapshot.data!.length > 10 ? 10 : snapshot.data!.length,
-                  itemBuilder: (context, index) {
-                    var manga = snapshot.data![index];
-                    return MangaCard(manga: manga);
-                  },
-                ),
-              );
+              return _buildMangaList(snapshot.data!);
             }
           },
         ),
+        buildPaginationButtons(categoryType),
       ],
     );
   }
 
-  Widget _buildMangaPlaceholderRow() {
+  Widget _buildMangaList(List<dynamic> data) {
     return SizedBox(
       height: 240,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: 10, // Number of placeholders
+        itemCount: data.length > 10 ? 10 : data.length,
         itemBuilder: (context, index) {
-          return const MangaCard(isPlaceholder: true); // Placeholder cards
+          var manga = data[index];
+          return MangaCard(manga: manga);
         },
       ),
+    );
+  }
+
+  // Placeholder row while loading
+  Widget _buildPlaceholderRow() {
+    return SizedBox(
+      height: 240,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: 10,
+        itemBuilder: (context, index) => const MangaCard(isPlaceholder: true),
+      ),
+    );
+  }
+
+  // Error row when data fails to load
+  Widget _buildErrorRow() {
+    return SizedBox(
+      height: 240,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error, color: Colors.red),
+            const SizedBox(height: 10),
+            Text('Failed to load data'),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  popularManga = _getData('manga', mangaPage);
+                  popularManhwa = _getData('manhwa', manhwaPage);
+                });
+              },
+              child: Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Reusable pagination buttons for manga, manhwa, and manhua
+  Widget buildPaginationButtons(String categoryType) {
+    int currentPage = (categoryType == 'manga') ? mangaPage : manhwaPage;
+    Function onPageChange = (int newPage) {
+      setState(() {
+        if (categoryType == 'manga') {
+          mangaPage = newPage;
+          popularManga = _getData('manga', mangaPage);
+        } else {
+          manhwaPage = newPage;
+          popularManhwa = _getData('manhwa', manhwaPage);
+        }
+      });
+    };
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
+        ),
+        Text('Page $currentPage'),
+        IconButton(
+          icon: const Icon(Icons.arrow_forward),
+          onPressed: () => onPageChange(currentPage + 1),
+        ),
+      ],
     );
   }
 
   // Refresh function
   Future<void> _refreshData() async {
     setState(() {
-      topManga = fetchMangaData('https://api.jikan.moe/v4/top/manga?type=manga&filter=bypopularity&limit=10');
-      featuredManga = fetchMangaData('https://api.jikan.moe/v4/top/manga?type=manga&filter=favorite&limit=10');
+      popularManga = _getData('manga', mangaPage);
+      popularManhwa = _getData('manhwa', manhwaPage);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: _refreshData, // Calls the refresh function
+      onRefresh: _refreshData,
+      color: backgroundColor,
+      backgroundColor: primaryColor,
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Column(
             children: [
               const SizedBox(height: 20),
-              buildMangaCategory('Top Ranking by Popularity', topManga),
-              const SizedBox(height: 20),
-              buildMangaCategory('Top Rated', featuredManga),
+              buildCategory('Popular Manga', popularManga, 'manga'),
+              const SizedBox(height: 20), 
+              buildCategory('Hottest Manhwa', popularManhwa, 'manhwa'),
               const SizedBox(height: 20),
             ],
           ),
@@ -119,11 +209,7 @@ class MangaCard extends StatelessWidget {
   final dynamic manga;
   final bool isPlaceholder;
 
-  const MangaCard({
-    Key? key,
-    this.manga,
-    this.isPlaceholder = false,
-  }) : super(key: key);
+  const MangaCard({Key? key, this.manga, this.isPlaceholder = false}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -136,12 +222,12 @@ class MangaCard extends StatelessWidget {
                 PageRouteBuilder(
                   pageBuilder: (context, animation, secondaryAnimation) {
                     return MangaDetailsPage(
-                      mangaId: manga['mal_id'], // Pass the manga ID
+                      mangaId: manga['mal_id'],
                       userId: FirebaseAuth.instance.currentUser!.uid,
                     );
                   },
                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                    const begin = Offset(1.0, 0.0); // Slide from the right
+                    const begin = Offset(1.0, 0.0);
                     const end = Offset.zero;
                     const curve = Curves.easeInOut;
 
@@ -157,26 +243,38 @@ class MangaCard extends StatelessWidget {
               );
             },
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         color: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 5,
         child: SizedBox(
-          width: 120,
-          height: 220,
+          width: 130,
+          height: 250,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (!isPlaceholder)
-                Image.network(
-                  manga?['images']?['jpg']?['image_url'] ?? '',
-                  width: 150, // Consistent width for images
-                  height: 150, // Consistent height for images
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const Icon(Icons.broken_image, size: 100),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: manga?['images']?['jpg']?['image_url'] ?? '',
+                    width: 120,
+                    height: 150,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: Colors.grey[300],
+                      width: 120,
+                      height: 150,
+                    ),
+                    errorWidget: (context, url, error) =>
+                        const Icon(Icons.broken_image, size: 100),
+                  ),
                 )
               else
                 Container(
-                  width: 100,
+                  width: 120,
                   height: 150,
                   color: Colors.grey[300],
                 ),
@@ -186,15 +284,19 @@ class MangaCard extends StatelessWidget {
                   width: 120,
                   child: Text(
                     manga?['title'] ?? '',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                      fontSize: 14,
+                    ),
                     textAlign: TextAlign.center,
-                    maxLines: 3,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 )
               else
                 Container(
-                  width: 100,
+                  width: 120,
                   height: 16,
                   color: Colors.grey[300],
                 ),

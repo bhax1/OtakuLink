@@ -1,5 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:otakulink/main.dart';
 import 'package:otakulink/pages/home_screen.dart';
 import 'forgotpassword_screen.dart';
@@ -20,264 +22,245 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Password visibility toggle
   bool _isPasswordVisible = false;
-  bool _isLoading = false; // Add this for loading state
+  bool _isLoading = false;
 
   // Firebase Auth instance
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Login logic
+  // Method: Handles user login
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      // Dismiss the keyboard
-      FocusScope.of(context).unfocus();
-
-      // Show "Logging in..." snackbar
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Logging in..."),
-          duration: Duration(seconds: 30), // Long duration to show during login
-        ),
-      );
-
-      setState(() {
-        _isLoading = true;
-      });
+      FocusScope.of(context).unfocus(); // Dismiss keyboard
+      setState(() => _isLoading = true);
 
       try {
-        UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        final userCredential = await _auth.signInWithEmailAndPassword(
           email: _emailController.text,
           password: _passwordController.text,
         );
 
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
         if (!userCredential.user!.emailVerified) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Please verify your email first.')),
-          );
+          _showSnackbar('Please verify your email first.');
         } else {
-          // Navigate to HomeScreen with smooth transition
-          Navigator.of(context).push(
-            _createFadeTransitionRoute(HomeScreen()),
-          );
+          // Fetch username from Firestore
+          String uid = userCredential.user!.uid;
+          DocumentSnapshot userDoc =
+              await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+          Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
+
+          // Save user data to SharedPreferences
+          var box = Hive.box('userCache');
+          box.put('email', userCredential.user!.email!);
+          box.put('uid', uid);
+          box.put('username', userData?['username'] ?? 'Default Username');
+
+          // Only navigate if still mounted
+          if (mounted) {
+            _navigateTo(const HomeScreen());
+          }
         }
       } on FirebaseAuthException catch (e) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-
-        String errorMessage = e.message ?? 'An error occurred';
-        if (e.code == 'wrong-password') {
-          errorMessage = 'Email or password is incorrect. Please try again.';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
+        _showSnackbar(_getErrorMessage(e));
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) setState(() => _isLoading = false);
       }
     }
+  }
+
+  // Helper: Displays a snackbar
+  void _showSnackbar(String message, {Duration? duration}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: duration ?? const Duration(seconds: 3)),
+    );
+  }
+
+  // Helper: Fetches error messages
+  String _getErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Email or password is incorrect. Please try again.';
+      default:
+        return e.message ?? 'An error occurred. Please try again.';
+    }
+  }
+
+  // Navigation helper with fade transition
+  void _navigateTo(Widget screen) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => FadeTransition(opacity: animation, child: screen),
+        transitionDuration: const Duration(milliseconds: 200),
+      ),
+    );
+  }
+
+  // Show a full-screen overlay with "Logging in..." message
+  Widget _buildOverlay() {
+    return _isLoading
+        ? Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: accentColor),
+                    SizedBox(height: 20),
+                    Text(
+                      'Logging in...',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : SizedBox.shrink();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Logo
-                  Image.asset(
-                    'assets/logo/logo_flat1.png',
-                    height: 150,
-                    width: 150,
-                  ),
-                  SizedBox(height: 20),
-                  // Welcome text
-                  _buildWelcomeText(),
-                  SizedBox(height: 30),
-                  // Email input field
-                  _buildEmailField(),
-                  SizedBox(height: 20),
-                  // Password input field
-                  _buildPasswordField(),
-                  SizedBox(height: 1),
-                  // Forgot password link
-                  _buildForgotPasswordLink(),
-                  SizedBox(height: 10),
-                  // Log in button
-                  _buildLoginButton(),
-                  SizedBox(height: 20),
-                  // Sign-up link
-                  _buildSignUpLink(),
-                ],
+      body: Stack(
+        children: [
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Logo
+                    Image.asset('assets/logo/logo_flat1.png', height: 150),
+                    const SizedBox(height: 20),
+                    // Welcome text
+                    _buildWelcomeText(),
+                    const SizedBox(height: 30),
+                    // Input fields and actions
+                    _buildEmailField(),
+                    const SizedBox(height: 20),
+                    _buildPasswordField(),
+                    _buildForgotPasswordLink(),
+                    const SizedBox(height: 10),
+                    _buildLoginButton(),
+                    const SizedBox(height: 20),
+                    _buildSignUpLink(),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
+          _buildOverlay(),
+        ],
       ),
     );
   }
 
-  // Welcome text widget
+  // UI: Welcome text
   Widget _buildWelcomeText() {
     return Text(
       'Welcome to OtakuLink',
       textAlign: TextAlign.center,
-      style: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-        color: primaryColor,
-      ),
+      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            color: primaryColor,
+            fontWeight: FontWeight.bold,
+          ),
     );
   }
 
-  // Email input field widget
+  // UI: Email input field
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailController,
-      decoration: InputDecoration(
-        labelText: 'Email',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        prefixIcon: Icon(Icons.email),
-      ),
+      decoration: _inputDecoration(label: 'Email', icon: Icons.email),
       keyboardType: TextInputType.emailAddress,
       validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter your email';
-        } else if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-          return 'Enter a valid email address';
-        }
+        if (value == null || value.isEmpty) return 'Please enter your email';
+        if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Enter a valid email address';
         return null;
       },
     );
   }
 
-  // Password input field widget
+  // UI: Password input field
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passwordController,
-      decoration: InputDecoration(
-        labelText: 'Password',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        prefixIcon: Icon(Icons.lock),
-        suffixIcon: IconButton(
-          icon: Icon(
-            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-          ),
-          onPressed: () {
-            setState(() {
-              _isPasswordVisible = !_isPasswordVisible;
-            });
-          },
+      decoration: _inputDecoration(
+        label: 'Password',
+        icon: Icons.lock,
+        suffix: IconButton(
+          icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+          onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
         ),
       ),
       obscureText: !_isPasswordVisible,
       validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Please enter your password';
-        } else if (value.length < 6) {
-          return 'Password must be at least 6 characters long';
-        }
+        if (value == null || value.isEmpty) return 'Please enter your password';
+        if (value.length < 6) return 'Password must be at least 6 characters long';
         return null;
       },
     );
   }
 
-  // Forgot password link widget
+  // UI: Forgot password link
   Widget _buildForgotPasswordLink() {
     return Align(
       alignment: Alignment.centerRight,
       child: TextButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            _createFadeTransitionRoute(ForgotPasswordScreen()),
-          );
-        },
+        onPressed: _isLoading ? null : () => _navigateTo(const ForgotPasswordScreen()),
         child: Text(
           'Forgot Password?',
-          style: TextStyle(color: accentColor),
+          style: TextStyle(color: _isLoading ? Colors.grey : accentColor),
         ),
       ),
     );
   }
 
-  // Log in button widget with loading state
+  // UI: Login button
   Widget _buildLoginButton() {
     return ElevatedButton(
-      onPressed: _isLoading ? null : _login, // Disable button if loading
+      onPressed: _isLoading ? null : _login,
       style: ElevatedButton.styleFrom(
         backgroundColor: primaryColor,
-        padding: EdgeInsets.symmetric(vertical: 15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      child: _isLoading
-          ? CircularProgressIndicator(color: Colors.white)
-          : Text(
-              'Log In',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+      child: const Text('Log In', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
     );
   }
 
-  // Sign-up link widget
+  // UI: Sign-up link
   Widget _buildSignUpLink() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text('Don’t have an account?'),
+        const Text('Don’t have an account?'),
         TextButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              _createFadeTransitionRoute(SignUpScreen()),
-            );
-          },
+          onPressed: _isLoading ? null : () => _navigateTo(const SignUpScreen()),
           child: Text(
             'Sign Up',
-            style: TextStyle(color: accentColor),
+            style: TextStyle(color: _isLoading ? Colors.grey : accentColor),
           ),
         ),
       ],
     );
   }
 
-  // Custom fade transition route
-  Route _createFadeTransitionRoute(Widget screen) {
-    return PageRouteBuilder(
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const curve = Curves.easeInOut;
-
-        var opacityAnimation = animation.drive(
-          Tween(begin: 0.0, end: 1.0).chain(CurveTween(curve: curve)),
-        );
-
-        return FadeTransition(
-          opacity: opacityAnimation,
-          child: child,
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return screen;
-      },
+  // Helper: Common input field decoration
+  InputDecoration _inputDecoration({required String label, required IconData icon, Widget? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      prefixIcon: Icon(icon),
+      suffixIcon: suffix,
     );
   }
 

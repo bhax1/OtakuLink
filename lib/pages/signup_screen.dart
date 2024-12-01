@@ -26,21 +26,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Color for consistent styling
-  final primaryColor = Color(0xFF33415C); // Update this if needed
-
   // Sign up method
   Future<void> _signUp() async {
     if (_formKey.currentState!.validate()) {
-      // Dismiss the keyboard
       FocusScope.of(context).unfocus();
-
-      // Show "Signing up..." snackbar
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Signing up..."),
-        ),
-      );
 
       setState(() {
         _isLoading = true;
@@ -74,15 +63,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
           password: _passwordController.text,
         );
 
-        // Save additional data to Firestore
+        // Save additional data to Firestore, including the creation date
         await _firestore.collection('users').doc(userCredential.user!.uid).set({
           'username': _nameController.text,
           'email': _emailController.text,
+          'createdAt': FieldValue.serverTimestamp(), // Adding the creation date
         });
 
         // Send email verification
         await userCredential.user!.sendEmailVerification();
-
+        
         // Show a banner to verify the email
         ScaffoldMessenger.of(context).showMaterialBanner(
           MaterialBanner(
@@ -90,7 +80,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               'A verification email has been sent to your email address.',
               style: TextStyle(color: Colors.white),
             ),
-            backgroundColor: Colors.blue,
+            backgroundColor: primaryColor,
             leading: Icon(
               Icons.email,
               color: Colors.white,
@@ -132,9 +122,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           SnackBar(content: Text(errorMessage)),
         );
       } finally {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -143,47 +131,72 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Center(
-          child: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(height: 20),
-                  Image.asset(
-                    'assets/gif/signup.gif',
-                    height: 100,
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Center(
+              child: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(height: 20),
+                      Image.asset(
+                        'assets/gif/signup.gif',
+                        height: 100,
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        'Create Your Account',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                        ),
+                      ),
+                      SizedBox(height: 30),
+                      _buildNameInput(),
+                      SizedBox(height: 20),
+                      _buildEmailInput(),
+                      SizedBox(height: 20),
+                      _buildPasswordInput(),
+                      SizedBox(height: 20),
+                      _buildConfirmPasswordInput(),
+                      SizedBox(height: 20),
+                      _buildSignUpButton(),
+                      SizedBox(height: 20),
+                      _buildLoginLink(),
+                    ],
                   ),
-                  SizedBox(height: 20),
-                  Text(
-                    'Create Your Account',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
-                  ),
-                  SizedBox(height: 30),
-                  _buildNameInput(),
-                  SizedBox(height: 20),
-                  _buildEmailInput(),
-                  SizedBox(height: 20),
-                  _buildPasswordInput(),
-                  SizedBox(height: 20),
-                  _buildConfirmPasswordInput(),
-                  SizedBox(height: 20),
-                  _buildSignUpButton(),
-                  SizedBox(height: 20),
-                  _buildLoginLink(),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: accentColor),
+                    SizedBox(height: 20),
+                    Text(
+                      'Signing up...',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -292,16 +305,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
         padding: EdgeInsets.symmetric(vertical: 15),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      child: _isLoading
-          ? CircularProgressIndicator(color: Colors.white)
-          : Text(
-              'Sign Up',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+      child: Text(
+        'Sign Up',
+        style: TextStyle(
+        color: Colors.white,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 

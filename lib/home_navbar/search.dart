@@ -1,16 +1,24 @@
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:otakulink/home_navbar/mangadetails.dart';
+import 'package:otakulink/home_navbar/profile.dart';
+import 'package:otakulink/home_navbar/viewprofile.dart';
 import 'package:otakulink/main.dart';
 
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key});
+  final Function(int) onTabChange;
+
+  const SearchPage({Key? key, required this.onTabChange}) : super(key: key);
 
   @override
   _SearchPageState createState() => _SearchPageState();
 }
+
 
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
@@ -18,25 +26,90 @@ class _SearchPageState extends State<SearchPage> {
   String selectedCategory = 'Manga';
   bool isLoading = false;
   bool noResultsFound = false;
+  late Box searchBox;
 
+  @override
+  void initState() {
+    super.initState();
+    _initializeHive();
+  }
+
+  Future<void> _initializeHive() async {
+    searchBox = await Hive.openBox('searchResultsBox');
+  }
+
+  // Cache key format: 'searchQuery_timestamp'
   Future<void> _search(String query) async {
     FocusScope.of(context).unfocus();
     if (query.isEmpty) return;
 
     _setLoadingState(true);
 
-    final apiUrl = 'https://api.jikan.moe/v4/manga?type=${selectedCategory.toLowerCase()}&q=$query&sfw=true';
+    // Skip cache for 'People' category
+    if (selectedCategory != 'People') {
+      var cachedResults = searchBox.get(query);
+      if (cachedResults != null) {
+        // Get the cached data and timestamp
+        final cacheData = jsonDecode(cachedResults);
+        final cachedTime = DateTime.parse(cacheData['timestamp']);
+
+        // Check if the cache is older than 1 day
+        if (DateTime.now().difference(cachedTime).inDays < 1) {
+          // If cache is valid, use it
+          setState(() {
+            searchResults = List<Map<String, dynamic>>.from(cacheData['data']);
+            noResultsFound = searchResults.isEmpty;
+          });
+          _setLoadingState(false);
+          return;
+        } else {
+          // If cache is older than 1 day, delete it
+          await searchBox.delete(query);
+        }
+      }
+    }
 
     try {
-      final response = await http.get(Uri.parse(apiUrl));
+      if (selectedCategory == 'People') {
+        // Firestore query for users
+        final usersCollection = FirebaseFirestore.instance.collection('users');
+        final querySnapshot = await usersCollection
+            .where('username', isGreaterThanOrEqualTo: query)
+            .where('username', isLessThanOrEqualTo: query + '\uf8ff')
+            .get();
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        _handleSearchResults(data);
+        setState(() {
+          searchResults = querySnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'username': data['username'],
+              'photoURL': data['photoURL'],
+              'userID': doc.id,
+            };
+          }).toList();
+          noResultsFound = searchResults.isEmpty;
+        });
       } else {
-        _handleError();
+        // Existing Manga/Manhwa API search logic
+        final apiUrl =
+            'https://api.jikan.moe/v4/manga?type=${selectedCategory.toLowerCase()}&q=$query&sfw=true';
+        final response = await http.get(Uri.parse(apiUrl));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          _handleSearchResults(data);
+
+          // Cache results for Manga/Manhwa with timestamp
+          final cacheData = {
+            'data': searchResults,
+            'timestamp': DateTime.now().toIso8601String(), // Add timestamp
+          };
+          searchBox.put(query, jsonEncode(cacheData));
+        } else {
+          _handleError();
+        }
       }
-    } catch (_) {
+    } catch (error) {
       _handleError();
     } finally {
       _setLoadingState(false);
@@ -46,7 +119,6 @@ class _SearchPageState extends State<SearchPage> {
   void _setLoadingState(bool loading) {
     setState(() {
       isLoading = loading;
-      noResultsFound = false;
     });
   }
 
@@ -74,18 +146,31 @@ class _SearchPageState extends State<SearchPage> {
     return DropdownButton<String>(
       value: selectedCategory,
       alignment: Alignment.center,
-      itemHeight: 50,
       iconEnabledColor: primaryColor,
       dropdownColor: backgroundColor,
+      style: TextStyle(color: textColor),
+      underline: Container(
+        height: 2,
+        color: accentColor,
+      ),
       onChanged: (String? newValue) {
-        setState(() {
-          selectedCategory = newValue!;
-        });
+        if (newValue != null) {
+          setState(() {
+            selectedCategory = newValue;
+            _controller.clear(); // Clear the search input
+            searchResults = []; // Clear the results
+            noResultsFound = false; // Reset no results state
+          });
+        }
       },
-      items: ['Manga', 'Manhwa', 'People'].map<DropdownMenuItem<String>>((String value) {
+      items: ['Manga', 'Manhwa', 'People']
+          .map<DropdownMenuItem<String>>((String value) {
         return DropdownMenuItem<String>(
           value: value,
-          child: Text(value),
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
         );
       }).toList(),
     );
@@ -97,7 +182,10 @@ class _SearchPageState extends State<SearchPage> {
         controller: _controller,
         decoration: InputDecoration(
           labelText: 'Search $selectedCategory',
-          border: const OutlineInputBorder(),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: primaryColor),
+          ),
           suffixIcon: IconButton(
             icon: const Icon(Icons.search),
             color: primaryColor,
@@ -111,9 +199,22 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildSearchResults() {
     if (isLoading) {
-      return const Expanded(
+      return Expanded(
         child: Center(
-          child: CircularProgressIndicator(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/gif/loading.gif',
+                height: 200,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Searching...",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -141,14 +242,62 @@ class _SearchPageState extends State<SearchPage> {
         itemCount: searchResults.length,
         itemBuilder: (context, index) {
           final result = searchResults[index];
-          return Card(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            child: ListTile(
-              leading: _buildImage(result),
-              title: Text(result['title']),
-              onTap: () => _navigateToMangaDetails(result),
-            ),
-          );
+          if (selectedCategory == 'People') {
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: result['photoURL'] != null
+                      ? CachedNetworkImageProvider(result['photoURL'])
+                      : const AssetImage('assets/pic/default_avatar.png')
+                          as ImageProvider,
+                ),
+                title: Text(result['username'] ?? 'Unknown User'),
+                onTap: () {
+                  final currentUser = FirebaseAuth.instance.currentUser;
+                  if (currentUser != null && currentUser.uid == result['userID']) {
+                    // Navigate to the Profile tab
+                    widget.onTabChange(2); // Assuming the profile page is at index 2
+                  } else {
+                    // Navigate to the ViewProfilePage
+                    Navigator.push(
+                      context,
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) {
+                          return ViewProfilePage(
+                            userId: result['userID'],
+                          );
+                        },
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          const begin = Offset(1.0, 0.0);
+                          const end = Offset.zero;
+                          const curve = Curves.easeInOut;
+
+                          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                          var offsetAnimation = animation.drive(tween);
+
+                          return SlideTransition(
+                            position: offsetAnimation,
+                            child: FadeTransition(opacity: animation, child: child),
+                          );
+                        },
+                      ),
+                    );
+                  }
+                },
+              ),
+            );
+          } else {
+            // Existing Manga/Manhwa result card
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              child: ListTile(
+                leading: _buildImage(result),
+                title: Text(result['title'] ?? 'Unknown Title'),
+                onTap: () => _navigateToMangaDetails(result),
+              ),
+            );
+          }
         },
       ),
     );
@@ -156,49 +305,63 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildImage(Map<String, dynamic> result) {
     final imageUrl = result['images']?['jpg']?['image_url'];
-    return imageUrl != null
-        ? Image.network(imageUrl, width: 50, height: 50, fit: BoxFit.cover)
-        : const Icon(Icons.broken_image);
+    return CachedNetworkImage(
+      imageUrl: imageUrl ?? '',
+      width: 50,
+      height: 50,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => Center(),
+      errorWidget: (context, url, error) => const Icon(Icons.broken_image),
+    );
   }
 
   void _navigateToMangaDetails(Map<String, dynamic> result) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => MangaDetailsPage(
-          mangaId: result['mal_id'],
-          userId: FirebaseAuth.instance.currentUser!.uid,
-        ),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return MangaDetailsPage(
+            mangaId: result['mal_id'],
+            userId: FirebaseAuth.instance.currentUser!.uid,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          var offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: FadeTransition(opacity: animation, child: child),
+          );
+        },
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // ignore: deprecated_member_use
-    return WillPopScope(
-      onWillPop: () async {
-        FocusScope.of(context).unfocus();
-        return true;
-      },
-      child: Scaffold(
-        body: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  _buildCategoryDropdown(),
-                  const SizedBox(width: 10),
-                  _buildSearchField(),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _buildSearchResults(),
-            ],
-          ),
+    return Scaffold(
+      resizeToAvoidBottomInset: false, // Prevent widgets from resizing
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _buildCategoryDropdown(),
+                const SizedBox(width: 10),
+                _buildSearchField(),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildSearchResults(),
+          ],
         ),
       ),
     );
