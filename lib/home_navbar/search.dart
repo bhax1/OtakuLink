@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:otakulink/home_navbar/mangadetails.dart';
-import 'package:otakulink/home_navbar/profile.dart';
 import 'package:otakulink/home_navbar/viewprofile.dart';
 import 'package:otakulink/main.dart';
 
@@ -18,7 +17,6 @@ class SearchPage extends StatefulWidget {
   @override
   _SearchPageState createState() => _SearchPageState();
 }
-
 
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
@@ -179,16 +177,20 @@ class _SearchPageState extends State<SearchPage> {
   Widget _buildSearchField() {
     return Expanded(
       child: TextField(
-        controller: _controller,
+        style: TextStyle(color: textColor),
         decoration: InputDecoration(
           labelText: 'Search $selectedCategory',
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: primaryColor),
           ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: primaryColor, width: 2),
+          ),
           suffixIcon: IconButton(
             icon: const Icon(Icons.search),
-            color: primaryColor,
+            color: accentColor,
             onPressed: () => _search(_controller.text),
           ),
         ),
@@ -255,9 +257,11 @@ class _SearchPageState extends State<SearchPage> {
                 title: Text(result['username'] ?? 'Unknown User'),
                 onTap: () {
                   final currentUser = FirebaseAuth.instance.currentUser;
-                  if (currentUser != null && currentUser.uid == result['userID']) {
+                  if (currentUser != null &&
+                      currentUser.uid == result['userID']) {
                     // Navigate to the Profile tab
-                    widget.onTabChange(2); // Assuming the profile page is at index 2
+                    widget.onTabChange(
+                        3); // Assuming the profile page is at index 2
                   } else {
                     // Navigate to the ViewProfilePage
                     Navigator.push(
@@ -268,17 +272,17 @@ class _SearchPageState extends State<SearchPage> {
                             userId: result['userID'],
                           );
                         },
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) {
                           const begin = Offset(1.0, 0.0);
                           const end = Offset.zero;
-                          const curve = Curves.easeInOut;
-
-                          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                          const curve = Curves.fastOutSlowIn;
+                          var tween = Tween(begin: begin, end: end)
+                              .chain(CurveTween(curve: curve));
                           var offsetAnimation = animation.drive(tween);
-
                           return SlideTransition(
                             position: offsetAnimation,
-                            child: FadeTransition(opacity: animation, child: child),
+                            child: child,
                           );
                         },
                       ),
@@ -328,14 +332,13 @@ class _SearchPageState extends State<SearchPage> {
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           const begin = Offset(1.0, 0.0);
           const end = Offset.zero;
-          const curve = Curves.easeInOut;
-
-          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          const curve = Curves.fastOutSlowIn;
+          var tween =
+              Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
           var offsetAnimation = animation.drive(tween);
-
           return SlideTransition(
             position: offsetAnimation,
-            child: FadeTransition(opacity: animation, child: child),
+            child: child,
           );
         },
       ),
@@ -345,7 +348,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false, // Prevent widgets from resizing
+      resizeToAvoidBottomInset: false,
       body: Padding(
         padding: const EdgeInsets.all(8.0),
         child: Column(

@@ -35,17 +35,20 @@ class _HomePageState extends State<HomePage> {
 
   // Fetch data with caching mechanism
   Future<List<dynamic>> _getData(String type, int page) async {
-    var box = await Hive.openBox('mangaCache');  // Open a Hive box
+    var box = await Hive.openBox('mangaCache'); // Open a Hive box
 
     final cacheKey = '$type$page';
     final cachedData = box.get(cacheKey);
     final cachedTimestamp = box.get('$cacheKey-timestamp');
 
-    if (cachedData != null && cachedTimestamp != null && DateTime.now().millisecondsSinceEpoch - cachedTimestamp < 86400000) {
+    if (cachedData != null &&
+        cachedTimestamp != null &&
+        DateTime.now().millisecondsSinceEpoch - cachedTimestamp < 86400000) {
       return List<dynamic>.from(json.decode(cachedData));
     }
 
-    final url = 'https://api.jikan.moe/v4/top/manga?type=$type&filter=bypopularity&limit=10&page=$page';
+    final url =
+        'https://api.jikan.moe/v4/top/manga?type=$type&filter=bypopularity&limit=10&page=$page';
     final response = await http.get(Uri.parse(url));
 
     if (response.statusCode == 200) {
@@ -62,7 +65,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   // Reusable widget for displaying categories (Manga/Manhwa/Manhua)
-  Widget buildCategory(String title, Future<List<dynamic>> data, String categoryType) {
+  Widget buildCategory(
+      String title, Future<List<dynamic>> data, String categoryType) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -78,7 +82,9 @@ class _HomePageState extends State<HomePage> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return _buildPlaceholderRow();
-            } else if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+            } else if (snapshot.hasError ||
+                !snapshot.hasData ||
+                snapshot.data!.isEmpty) {
               return _buildErrorRow();
             } else {
               return _buildMangaList(snapshot.data!);
@@ -162,7 +168,8 @@ class _HomePageState extends State<HomePage> {
       children: [
         IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
+          onPressed:
+              currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
         ),
         Text('Page $currentPage'),
         IconButton(
@@ -194,7 +201,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               const SizedBox(height: 20),
               buildCategory('Popular Manga', popularManga, 'manga'),
-              const SizedBox(height: 20), 
+              const SizedBox(height: 20),
               buildCategory('Hottest Manhwa', popularManhwa, 'manhwa'),
               const SizedBox(height: 20),
             ],
@@ -209,7 +216,8 @@ class MangaCard extends StatelessWidget {
   final dynamic manga;
   final bool isPlaceholder;
 
-  const MangaCard({Key? key, this.manga, this.isPlaceholder = false}) : super(key: key);
+  const MangaCard({Key? key, this.manga, this.isPlaceholder = false})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -226,17 +234,17 @@ class MangaCard extends StatelessWidget {
                       userId: FirebaseAuth.instance.currentUser!.uid,
                     );
                   },
-                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
                     const begin = Offset(1.0, 0.0);
                     const end = Offset.zero;
-                    const curve = Curves.easeInOut;
-
-                    var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                    const curve = Curves.fastOutSlowIn;
+                    var tween = Tween(begin: begin, end: end)
+                        .chain(CurveTween(curve: curve));
                     var offsetAnimation = animation.drive(tween);
-
                     return SlideTransition(
                       position: offsetAnimation,
-                      child: FadeTransition(opacity: animation, child: child),
+                      child: child,
                     );
                   },
                 ),

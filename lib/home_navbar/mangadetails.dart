@@ -10,7 +10,8 @@ class MangaDetailsPage extends StatefulWidget {
   final int mangaId;
   final String userId;
 
-  const MangaDetailsPage({Key? key, required this.mangaId, required this.userId})
+  const MangaDetailsPage(
+      {Key? key, required this.mangaId, required this.userId})
       : super(key: key);
 
   @override
@@ -29,7 +30,8 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
   String _originalReadingStatus = 'Not Yet';
 
   Map<String, dynamic>? mangaDetails;
-  TextEditingController _commentaryController = TextEditingController(); // Controller for commentary
+  TextEditingController _commentaryController =
+      TextEditingController(); // Controller for commentary
 
   @override
   void initState() {
@@ -38,7 +40,6 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     _fetchUserDetails();
   }
 
-  // Fetch Manga details from the API
   Future<void> _fetchMangaDetails() async {
     final url = 'https://api.jikan.moe/v4/manga/${widget.mangaId}';
     setState(() => _isLoading = true);
@@ -58,7 +59,6 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     }
   }
 
-  // Fetch existing user details (rating, favorite, and reading status)
   Future<void> _fetchUserDetails() async {
     final doc = await FirebaseFirestore.instance
         .collection('users')
@@ -75,31 +75,22 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
         _originalRating = _rating;
         _originalIsFavorite = _isFavorite;
         _originalReadingStatus = _readingStatus;
+        _commentaryController.text = doc['commentary'] ?? '';
       });
     }
   }
 
-  // Save the changes (rating, favorite, reading status, and commentary)
   Future<void> _saveMangaDetails() async {
-    // Check if any changes were made
     if (_rating == _originalRating &&
         _isFavorite == _originalIsFavorite &&
-        _readingStatus == _originalReadingStatus) {
+        _readingStatus == _originalReadingStatus &&
+        _commentaryController.text.isEmpty) {
       _showErrorDialog('No changes have been made.');
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // Extract genres from manga details and convert them into a list of strings
-    List<String> genresList = [];
-    if (mangaDetails?['genres'] != null) {
-      genresList = List<String>.from(
-        mangaDetails!['genres'].map((genre) => genre['name']),
-      );
-    }
-
-    // Save the changes, including genres
     await FirebaseFirestore.instance
         .collection('users')
         .doc(widget.userId)
@@ -109,10 +100,9 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
       'rating': _rating,
       'isFavorite': _isFavorite,
       'readingStatus': _readingStatus,
-      'genres': genresList,  // Add genres list here
       'commentary': _commentaryController.text.isNotEmpty
           ? _commentaryController.text
-          : '',  // Save commentary if provided
+          : '',
     });
 
     setState(() => _isLoading = false);
@@ -120,7 +110,6 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     _showSuccessDialog('Changes Updated');
   }
 
-  // Show error dialog
   void _showErrorDialog(String message) {
     setState(() => _isLoading = false);
     showDialog(
@@ -140,7 +129,6 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
     );
   }
 
-  // Show success dialog
   void _showSuccessDialog(String message) {
     showDialog(
       context: context,
@@ -185,14 +173,15 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
 
     // Extract manga details
     final author = mangaDetails?['authors']?.first['name'] ?? 'Unknown Author';
-    final publisher = mangaDetails?['serializations'] != null && mangaDetails!['serializations'].isNotEmpty
-    ? mangaDetails!['serializations'].first['name']
-    : 'Unknown Publisher';
+    final publisher = mangaDetails?['serializations'] != null &&
+            mangaDetails!['serializations'].isNotEmpty
+        ? mangaDetails!['serializations'].first['name']
+        : 'Unknown Publisher';
     final status = mangaDetails?['status'] ?? 'Unknown Status';
     final description = mangaDetails?['synopsis'] ?? 'No description available';
-    final genres = mangaDetails?['genres']
-            ?.map((genre) => genre['name'])
-            .join(', ') ?? 'No genres available';
+    final genres =
+        mangaDetails?['genres']?.map((genre) => genre['name']).join(', ') ??
+            'No genres available';
     final chapters = mangaDetails?['chapters'] ?? 'Ongoing';
     final type = mangaDetails?['type'] ?? 'Unknown';
     final publishedFrom = mangaDetails?['published']['from'] != null
@@ -258,20 +247,29 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text('Author: $author', style: TextStyle(fontSize: 16, color: primaryColor)),
-              Text('Publisher: $publisher', style: TextStyle(fontSize: 16, color: primaryColor)),
-              Text('Status: $status', style: TextStyle(fontSize: 16, color: primaryColor)),
-              Text('Genres: $genres', style: TextStyle(fontSize: 16, color: primaryColor)),
-              Text('Chapters: $chapters', style: TextStyle(fontSize: 16, color: primaryColor)),
-              Text('Type: $type', style: TextStyle(fontSize: 16, color: primaryColor)),
-              Text('Published: $publishedFrom to $publishedTo', style: TextStyle(fontSize: 14, color: primaryColor)),
+              Text('Author: $author',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Publisher: $publisher',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Status: $status',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Genres: $genres',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Chapters: $chapters',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Type: $type',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Published: $publishedFrom to $publishedTo',
+                  style: TextStyle(fontSize: 14, color: primaryColor)),
 
               const SizedBox(height: 16),
-              Text(description, style: TextStyle(fontSize: 14, color: Colors.black87)),
+              Text(description,
+                  style: TextStyle(fontSize: 14, color: Colors.black87)),
               const SizedBox(height: 16),
 
               // User's rating, reading status, and favorite options
-              Text('Your Rating: $_rating', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Your Rating: $_rating',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
               Slider(
                 value: _rating,
                 min: 0,
@@ -286,7 +284,8 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                   });
                 },
               ),
-              Text('Your Reading Status: $_readingStatus', style: TextStyle(fontSize: 16, color: primaryColor)),
+              Text('Your Reading Status: $_readingStatus',
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
               DropdownButton<String>(
                 alignment: Alignment.center,
                 dropdownColor: backgroundColor,
@@ -306,7 +305,8 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
               ),
               Row(
                 children: [
-                  Text('Favorite', style: TextStyle(fontSize: 16, color: primaryColor)),
+                  Text('Favorite',
+                      style: TextStyle(fontSize: 16, color: primaryColor)),
                   Checkbox(
                     value: _isFavorite,
                     onChanged: (bool? value) {
