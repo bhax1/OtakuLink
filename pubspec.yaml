@@ -32,21 +32,20 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   auto_size_text: ^3.0.0
-  intl: ^0.19.0
+  intl: ^0.20.1
   cached_network_image: ^3.4.1
   hive: ^2.0.5
   hive_flutter: ^1.1.0
-  rxdart: ^0.28.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  firebase_core: ^3.8.0
-  cloud_firestore: ^5.5.0
+  firebase_core: ^3.8.1
+  cloud_firestore: ^5.5.1
   firebase_auth: ^5.3.3
-  connectivity_plus: ^5.0.2
-  # connectivity_plus: ^6.1.0
+  connectivity_plus: ^5.0.1
   google_nav_bar: ^5.0.7
+  flutter_riverpod: ^2.6.1
 
 dev_dependencies:
   flutter_test:

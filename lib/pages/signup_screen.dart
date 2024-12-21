@@ -17,6 +17,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
+
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _confirmPasswordFocusNode = FocusNode();
+
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   final _formKey = GlobalKey<FormState>();
@@ -26,10 +32,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+
+    _nameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
+
+    super.dispose();
+  }
+
   // Sign up method
   Future<void> _signUp() async {
     if (_formKey.currentState!.validate()) {
-      FocusScope.of(context).unfocus();
+      _nameFocusNode.unfocus();
+      _emailFocusNode.unfocus();
+      _passwordFocusNode.unfocus();
+      _confirmPasswordFocusNode.unfocus();
 
       setState(() {
         _isLoading = true;
@@ -72,7 +96,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
         // Send email verification
         await userCredential.user!.sendEmailVerification();
-        
+
         // Show a banner to verify the email
         ScaffoldMessenger.of(context).showMaterialBanner(
           MaterialBanner(
@@ -129,74 +153,82 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Center(
-              child: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(height: 20),
-                      Image.asset(
-                        'assets/gif/signup.gif',
-                        height: 100,
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'Create Your Account',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
+    return GestureDetector(
+      onTap: () {
+        _nameFocusNode.unfocus();
+        _emailFocusNode.unfocus();
+        _passwordFocusNode.unfocus();
+        _confirmPasswordFocusNode.unfocus();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: 20),
+                        Image.asset(
+                          'assets/gif/signup.gif',
+                          height: 100,
                         ),
-                      ),
-                      SizedBox(height: 30),
-                      _buildNameInput(),
-                      SizedBox(height: 20),
-                      _buildEmailInput(),
-                      SizedBox(height: 20),
-                      _buildPasswordInput(),
-                      SizedBox(height: 20),
-                      _buildConfirmPasswordInput(),
-                      SizedBox(height: 20),
-                      _buildSignUpButton(),
-                      SizedBox(height: 20),
-                      _buildLoginLink(),
-                    ],
+                        SizedBox(height: 20),
+                        Text(
+                          'Create Your Account',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                          ),
+                        ),
+                        SizedBox(height: 30),
+                        _buildNameInput(),
+                        SizedBox(height: 20),
+                        _buildEmailInput(),
+                        SizedBox(height: 20),
+                        _buildPasswordInput(),
+                        SizedBox(height: 20),
+                        _buildConfirmPasswordInput(),
+                        SizedBox(height: 20),
+                        _buildSignUpButton(),
+                        SizedBox(height: 20),
+                        _buildLoginLink(),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          if (_isLoading)
-            Container(
-              color: Colors.black.withOpacity(0.5),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: accentColor),
-                    SizedBox(height: 20),
-                    Text(
-                      'Signing up...',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+            if (_isLoading)
+              Container(
+                color: Colors.black.withOpacity(0.5),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: accentColor),
+                      SizedBox(height: 20),
+                      Text(
+                        'Signing up...',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -204,10 +236,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildNameInput() {
     return TextFormField(
       controller: _nameController,
-      decoration: InputDecoration(
-        labelText: 'Username',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        prefixIcon: Icon(Icons.person),
+      focusNode: _nameFocusNode,
+      cursorColor: accentColor,
+      decoration: _inputDecoration(
+        label: 'Username',
+        icon: Icons.person,
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
@@ -221,11 +254,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildEmailInput() {
     return TextFormField(
       controller: _emailController,
-      decoration: InputDecoration(
-        labelText: 'Email',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        prefixIcon: Icon(Icons.email),
-      ),
+      focusNode: _emailFocusNode,
+      cursorColor: accentColor,
+      decoration: _inputDecoration(label: 'Email', icon: Icons.email),
       keyboardType: TextInputType.emailAddress,
       validator: (value) {
         if (value == null || value.isEmpty) {
@@ -241,11 +272,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildPasswordInput() {
     return TextFormField(
       controller: _passwordController,
-      decoration: InputDecoration(
-        labelText: 'Password',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        prefixIcon: Icon(Icons.lock),
-        suffixIcon: IconButton(
+      focusNode: _passwordFocusNode,
+      cursorColor: accentColor,
+      decoration: _inputDecoration(
+        label: 'Password',
+        icon: Icons.lock,
+        suffix: IconButton(
           icon: Icon(
               _isPasswordVisible ? Icons.visibility : Icons.visibility_off),
           onPressed: () {
@@ -270,11 +302,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildConfirmPasswordInput() {
     return TextFormField(
       controller: _confirmPasswordController,
-      decoration: InputDecoration(
-        labelText: 'Confirm Password',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        prefixIcon: Icon(Icons.lock),
-        suffixIcon: IconButton(
+      focusNode: _confirmPasswordFocusNode,
+      cursorColor: accentColor,
+      decoration: _inputDecoration(
+        label: 'Confirm Password',
+        icon: Icons.lock,
+        suffix: IconButton(
           icon: Icon(_isConfirmPasswordVisible
               ? Icons.visibility
               : Icons.visibility_off),
@@ -308,9 +341,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       child: Text(
         'Sign Up',
         style: TextStyle(
-        color: Colors.white,
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -334,6 +367,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  InputDecoration _inputDecoration(
+      {required String label, required IconData icon, Widget? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: primaryColor),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: primaryColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: primaryColor, width: 2),
+      ),
+      prefixIcon: Icon(icon),
+      suffixIcon: suffix,
+    );
+  }
+
   // Create a fade transition route to LoginScreen
   PageRouteBuilder _createFadeTransitionRoute() {
     return PageRouteBuilder(
@@ -343,7 +394,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         const end = 1.0;
         const curve = Curves.easeInOut;
 
-        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var tween =
+            Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
         var fadeAnimation = animation.drive(tween);
 
         return FadeTransition(opacity: fadeAnimation, child: child);

@@ -3,8 +3,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 class ProfileHeader extends StatelessWidget {
   final Map<String, dynamic> userProfile;
+  final Stream<Map<String, String>> countsStream;
 
-  const ProfileHeader({Key? key, required this.userProfile}) : super(key: key);
+  const ProfileHeader({
+    Key? key,
+    required this.userProfile,
+    required this.countsStream,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -35,12 +40,18 @@ class ProfileHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 5),
-              Row(
-                children: [
-                  Text('${userProfile['followersCount'] ?? 0} Followers'),
-                  const SizedBox(width: 10),
-                  Text('${userProfile['friendsCount'] ?? 0} Friends'),
-                ],
+              StreamBuilder<Map<String, String>>(
+                stream: countsStream,
+                builder: (context, snapshot) {
+                  final counts = snapshot.data ?? {'followers': '0', 'friends': '0'};
+                  return Row(
+                    children: [
+                      Text('${counts['followers']} Followers'),
+                      const SizedBox(width: 10),
+                      Text('${counts['friends']} Friends'),
+                    ],
+                  );
+                },
               ),
             ],
           ),

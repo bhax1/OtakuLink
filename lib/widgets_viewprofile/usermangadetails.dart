@@ -1,45 +1,50 @@
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:otakulink/home_navbar/viewcomments.dart';
 import 'package:otakulink/main.dart';
 
-class MangaDetailsPage extends StatefulWidget {
+import '../home_navbar/viewcomments.dart';
+
+class UserMangaPage extends StatefulWidget {
   final int mangaId;
   final String userId;
 
-  const MangaDetailsPage(
-      {Key? key, required this.mangaId, required this.userId})
+  const UserMangaPage({Key? key, required this.mangaId, required this.userId})
       : super(key: key);
 
   @override
-  _MangaDetailsPageState createState() => _MangaDetailsPageState();
+  _UserMangaPageState createState() => _UserMangaPageState();
 }
 
-class _MangaDetailsPageState extends State<MangaDetailsPage> {
+class _UserMangaPageState extends State<UserMangaPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  String currentUserId = '';
   double _rating = 0;
   bool _isFavorite = false;
   bool _isLoading = false;
-  String _readingStatus = 'Not Yet'; // Default reading status
-
-  // Original values to check if anything changed
-  double _originalRating = 0;
-  bool _originalIsFavorite = false;
-  String _originalReadingStatus = 'Not Yet';
-  String _originalController = '';
-
+  String _readingStatus = 'Not Yet';
   Map<String, dynamic>? mangaDetails;
-  TextEditingController _commentaryController =
-      TextEditingController(); // Controller for commentary
+  String _commentaryController = '';
 
   @override
   void initState() {
     super.initState();
     _fetchMangaDetails();
     _fetchUserDetails();
+    _getCurrentUserId();
+  }
+
+  void _getCurrentUserId() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      setState(() {
+        currentUserId = user.uid;
+      });
+    }
   }
 
   Future<void> _fetchMangaDetails() async {
@@ -62,7 +67,7 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
   }
 
   Future<void> _fetchUserDetails() async {
-    final doc = await FirebaseFirestore.instance
+    final doc = await _firestore
         .collection('users')
         .doc(widget.userId)
         .collection('manga_ratings')
@@ -74,45 +79,9 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
         _rating = doc['rating'] ?? 0;
         _isFavorite = doc['isFavorite'] ?? false;
         _readingStatus = doc['readingStatus'] ?? 'Not Yet';
-        _commentaryController.text = doc['commentary'] ?? '';
-        _originalRating = _rating;
-        _originalIsFavorite = _isFavorite;
-        _originalReadingStatus = _readingStatus;
-        _originalController = doc['commentary'] ?? '';
+        _commentaryController = doc['commentary'] ?? '';
       });
     }
-  }
-
-  Future<void> _saveMangaDetails() async {
-    if (_rating == _originalRating &&
-        _isFavorite == _originalIsFavorite &&
-        _readingStatus == _originalReadingStatus &&
-        _commentaryController == _originalController) {
-      _showErrorDialog('No changes have been made.');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .collection('manga_ratings')
-        .doc(widget.mangaId.toString())
-        .set({
-      'rating': _rating,
-      'isFavorite': _isFavorite,
-      'readingStatus': _readingStatus,
-      'commentary': _commentaryController.text.isNotEmpty
-          ? _commentaryController.text
-          : '',
-      'timestamp': FieldValue.serverTimestamp(),
-      'type': mangaDetails?['type'],
-    });
-
-    setState(() => _isLoading = false);
-
-    _showSuccessDialog('Changes Updated');
   }
 
   void _showErrorDialog(String message) {
@@ -121,109 +90,17 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Opps'),
+          title: const Text('Error'),
           content: Text(message),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'OK',
-                style: TextStyle(color: Colors.blue),
-              ),
+              child: const Text('OK'),
             ),
           ],
         );
       },
     );
-  }
-
-  void _showSuccessDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Success'),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: const Text(
-                'OK',
-                style: TextStyle(color: Colors.blueAccent),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _deleteManga() async {
-    // Check if the record exists
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.userId)
-        .collection('manga_ratings')
-        .doc(widget.mangaId.toString())
-        .get();
-
-    if (!doc.exists) {
-      _showErrorDialog("You don't have an existing rating for this.");
-      return;
-    }
-
-    // Show a confirmation dialog
-    bool? confirm = await showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Confirm Deletion'),
-          content: const Text(
-              'Are you sure you want to delete this manga from your list?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: Colors.blue),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text(
-                'Delete',
-                style: TextStyle(color: Colors.red),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    // If the user confirms deletion, proceed
-    if (confirm == true) {
-      setState(() => _isLoading = true);
-
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.userId)
-            .collection('manga_ratings')
-            .doc(widget.mangaId.toString())
-            .delete();
-
-        setState(() => _isLoading = false);
-
-        // Show success dialog and navigate back
-        _showSuccessDialog('Rating deleted successfully.');
-      } catch (e) {
-        setState(() => _isLoading = false);
-        _showErrorDialog('Failed to delete rating. Please try again.');
-      }
-    }
   }
 
   @override
@@ -288,7 +165,7 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                   pageBuilder: (context, animation, secondaryAnimation) {
                     return CommentsPage(
                       mangaId: widget.mangaId,
-                      userId: widget.userId,
+                      userId: currentUserId,
                     );
                   },
                   transitionsBuilder:
@@ -306,12 +183,6 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                   },
                 ),
               );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete, color: Colors.white),
-            onPressed: () {
-              _deleteManga();
             },
           ),
         ],
@@ -383,100 +254,23 @@ class _MangaDetailsPageState extends State<MangaDetailsPage> {
                   style: TextStyle(fontSize: 14, color: Colors.black87)),
               const SizedBox(height: 16),
 
-              Text('Your Rating: $_rating',
+              Text('Rating: $_rating',
                   style: TextStyle(fontSize: 16, color: primaryColor)),
-              Slider(
-                value: _rating,
-                min: 0,
-                max: 10,
-                divisions: 10,
-                label: _rating.toString(),
-                activeColor: primaryColor,
-                inactiveColor: accentColor,
-                onChanged: (double value) {
-                  setState(() {
-                    _rating = value;
-                  });
-                },
-              ),
-              Text('Your Reading Status: $_readingStatus',
+              const SizedBox(height: 16),
+              Text('Reading Status: $_readingStatus',
                   style: TextStyle(fontSize: 16, color: primaryColor)),
-              DropdownButton<String>(
-                alignment: Alignment.center,
-                dropdownColor: backgroundColor,
-                value: _readingStatus,
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _readingStatus = newValue!;
-                  });
-                },
-                items: <String>[
-                  'Not Yet',
-                  'Reading',
-                  'Completed',
-                  'On Hold',
-                  'Dropped'
-                ].map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-              ),
-              Row(
-                children: [
-                  Text(
-                    'Favorite',
-                    style: TextStyle(fontSize: 16, color: primaryColor),
-                  ),
-                  Checkbox(
-                    value: _isFavorite,
-                    activeColor: Colors.blue,
-                    checkColor: Colors.white,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        _isFavorite = value!;
-                      });
-                    },
-                  ),
-                ],
-              ),
+              const SizedBox(height: 16),
 
-              TextSelectionTheme(
-                data: TextSelectionThemeData(
-                  selectionColor: Colors.grey,
-                  selectionHandleColor: primaryColor,
-                ),
-                child: TextField(
-                  controller: _commentaryController,
-                  cursorColor: accentColor,
-                  decoration: InputDecoration(
-                    labelText: 'Add Commentary',
-                    labelStyle: TextStyle(color: primaryColor),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: accentColor),
-                    ),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: primaryColor),
-                    ),
-                  ),
-                  maxLines: null,
-                ),
+              Text(
+                'Favorite: ${_isFavorite ? "Yes" : "No"}',
+                style: TextStyle(fontSize: 16, color: primaryColor),
               ),
 
               const SizedBox(height: 16),
-              Center(
-                child: ElevatedButton(
-                  onPressed: _saveMangaDetails,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: backgroundColor,
-                  ),
-                  child: const Text(
-                    'Save Changes',
-                  ),
-                ),
-              ),
+              Text("Commentary: $_commentaryController",
+                  style: TextStyle(fontSize: 16, color: primaryColor)),
+
+              const SizedBox(height: 16),
             ],
           ),
         ),

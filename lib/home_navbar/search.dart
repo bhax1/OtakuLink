@@ -1,13 +1,12 @@
 import 'dart:convert';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:otakulink/home_navbar/mangadetails.dart';
 import 'package:otakulink/home_navbar/viewprofile.dart';
 import 'package:otakulink/main.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class SearchPage extends StatefulWidget {
   final Function(int) onTabChange;
@@ -20,89 +19,72 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
   List<Map<String, dynamic>> searchResults = [];
   String selectedCategory = 'Manga';
   bool isLoading = false;
   bool noResultsFound = false;
-  late Box searchBox;
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeHive();
+  void _setLoadingState(bool loading) {
+    setState(() {
+      isLoading = loading;
+    });
   }
 
-  Future<void> _initializeHive() async {
-    searchBox = await Hive.openBox('searchResultsBox');
+  void _handleSearchResults(List<Map<String, dynamic>> results) {
+    setState(() {
+      searchResults = results;
+      noResultsFound = results.isEmpty;
+    });
   }
 
-  // Cache key format: 'searchQuery_timestamp'
+  void _handleError() {
+    setState(() {
+      searchResults = [];
+      noResultsFound = true;
+    });
+  }
+
   Future<void> _search(String query) async {
-    FocusScope.of(context).unfocus();
+    _focusNode.unfocus();
     if (query.isEmpty) return;
 
     _setLoadingState(true);
 
-    // Skip cache for 'People' category
-    if (selectedCategory != 'People') {
-      var cachedResults = searchBox.get(query);
-      if (cachedResults != null) {
-        // Get the cached data and timestamp
-        final cacheData = jsonDecode(cachedResults);
-        final cachedTime = DateTime.parse(cacheData['timestamp']);
-
-        // Check if the cache is older than 1 day
-        if (DateTime.now().difference(cachedTime).inDays < 1) {
-          // If cache is valid, use it
-          setState(() {
-            searchResults = List<Map<String, dynamic>>.from(cacheData['data']);
-            noResultsFound = searchResults.isEmpty;
-          });
-          _setLoadingState(false);
-          return;
-        } else {
-          // If cache is older than 1 day, delete it
-          await searchBox.delete(query);
-        }
-      }
-    }
-
     try {
-      if (selectedCategory == 'People') {
-        // Firestore query for users
+      if (selectedCategory == 'Users') {
         final usersCollection = FirebaseFirestore.instance.collection('users');
         final querySnapshot = await usersCollection
             .where('username', isGreaterThanOrEqualTo: query)
             .where('username', isLessThanOrEqualTo: query + '\uf8ff')
             .get();
 
-        setState(() {
-          searchResults = querySnapshot.docs.map((doc) {
-            final data = doc.data();
-            return {
-              'username': data['username'],
-              'photoURL': data['photoURL'],
-              'userID': doc.id,
-            };
-          }).toList();
-          noResultsFound = searchResults.isEmpty;
-        });
+        final results = querySnapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'username': data['username'],
+            'photoURL': data['photoURL'],
+            'userID': doc.id,
+          };
+        }).toList();
+
+        _handleSearchResults(results);
       } else {
-        // Existing Manga/Manhwa API search logic
         final apiUrl =
             'https://api.jikan.moe/v4/manga?type=${selectedCategory.toLowerCase()}&q=$query&sfw=true';
         final response = await http.get(Uri.parse(apiUrl));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
-          _handleSearchResults(data);
-
-          // Cache results for Manga/Manhwa with timestamp
-          final cacheData = {
-            'data': searchResults,
-            'timestamp': DateTime.now().toIso8601String(), // Add timestamp
-          };
-          searchBox.put(query, jsonEncode(cacheData));
+          final results = (data['data'] as List).map((item) {
+            return {
+              'title': item['title'] ?? 'Unknown Title',
+              'images': item['images'],
+              'mal_id': item['mal_id'],
+            };
+          }).toList();
+          _handleSearchResults(results);
         } else {
           _handleError();
         }
@@ -112,32 +94,6 @@ class _SearchPageState extends State<SearchPage> {
     } finally {
       _setLoadingState(false);
     }
-  }
-
-  void _setLoadingState(bool loading) {
-    setState(() {
-      isLoading = loading;
-    });
-  }
-
-  void _handleSearchResults(Map<String, dynamic> data) {
-    setState(() {
-      searchResults = (data['data'] as List)
-          .map((item) => {
-                'title': item['title'] ?? 'Unknown Title',
-                'images': item['images'],
-                'mal_id': item['mal_id'],
-              })
-          .toList();
-      noResultsFound = searchResults.isEmpty;
-    });
-  }
-
-  void _handleError() {
-    setState(() {
-      searchResults = [];
-      noResultsFound = true;
-    });
   }
 
   Widget _buildCategoryDropdown() {
@@ -155,13 +111,13 @@ class _SearchPageState extends State<SearchPage> {
         if (newValue != null) {
           setState(() {
             selectedCategory = newValue;
-            _controller.clear(); // Clear the search input
-            searchResults = []; // Clear the results
-            noResultsFound = false; // Reset no results state
+            _controller.clear();
+            searchResults = [];
+            noResultsFound = false;
           });
         }
       },
-      items: ['Manga', 'Manhwa', 'People']
+      items: ['Manga', 'Manhwa', 'Users']
           .map<DropdownMenuItem<String>>((String value) {
         return DropdownMenuItem<String>(
           value: value,
@@ -176,25 +132,35 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildSearchField() {
     return Expanded(
-      child: TextField(
-        style: TextStyle(color: textColor),
-        decoration: InputDecoration(
-          labelText: 'Search $selectedCategory',
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: primaryColor),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: primaryColor, width: 2),
-          ),
-          suffixIcon: IconButton(
-            icon: const Icon(Icons.search),
-            color: accentColor,
-            onPressed: () => _search(_controller.text),
-          ),
+      child: TextSelectionTheme(
+        data: TextSelectionThemeData(
+          selectionColor: Colors.grey,
+          selectionHandleColor: primaryColor,
         ),
-        onSubmitted: _search,
+        child: TextField(
+          focusNode: _focusNode,
+          controller: _controller,
+          style: TextStyle(color: textColor),
+          cursorColor: accentColor,
+          decoration: InputDecoration(
+            labelText: 'Search $selectedCategory',
+            labelStyle: TextStyle(color: Colors.grey),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: primaryColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: primaryColor, width: 2),
+            ),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.search),
+              color: accentColor,
+              onPressed: () => _search(_controller.text),
+            ),
+          ),
+          onSubmitted: _search,
+        ),
       ),
     );
   }
@@ -244,8 +210,9 @@ class _SearchPageState extends State<SearchPage> {
         itemCount: searchResults.length,
         itemBuilder: (context, index) {
           final result = searchResults[index];
-          if (selectedCategory == 'People') {
+          if (selectedCategory == 'Users') {
             return Card(
+              color: secondaryColor,
               margin: const EdgeInsets.symmetric(vertical: 8),
               child: ListTile(
                 leading: CircleAvatar(
@@ -259,11 +226,8 @@ class _SearchPageState extends State<SearchPage> {
                   final currentUser = FirebaseAuth.instance.currentUser;
                   if (currentUser != null &&
                       currentUser.uid == result['userID']) {
-                    // Navigate to the Profile tab
-                    widget.onTabChange(
-                        3); // Assuming the profile page is at index 2
+                    widget.onTabChange(3); // Navigate to Profile tab
                   } else {
-                    // Navigate to the ViewProfilePage
                     Navigator.push(
                       context,
                       PageRouteBuilder(
@@ -292,9 +256,9 @@ class _SearchPageState extends State<SearchPage> {
               ),
             );
           } else {
-            // Existing Manga/Manhwa result card
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 8),
+              color: secondaryColor,
               child: ListTile(
                 leading: _buildImage(result),
                 title: Text(result['title'] ?? 'Unknown Title'),
@@ -314,7 +278,7 @@ class _SearchPageState extends State<SearchPage> {
       width: 50,
       height: 50,
       fit: BoxFit.cover,
-      placeholder: (context, url) => Center(),
+      placeholder: (context, url) => const Icon(null),
       errorWidget: (context, url, error) => const Icon(Icons.broken_image),
     );
   }
@@ -351,20 +315,25 @@ class _SearchPageState extends State<SearchPage> {
       resizeToAvoidBottomInset: false,
       body: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                _buildCategoryDropdown(),
-                const SizedBox(width: 10),
-                _buildSearchField(),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _buildSearchResults(),
-          ],
+        child: GestureDetector(
+          onTap: () {
+            _focusNode.unfocus();
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _buildCategoryDropdown(),
+                  const SizedBox(width: 10),
+                  _buildSearchField(),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _buildSearchResults(),
+            ],
+          ),
         ),
       ),
     );

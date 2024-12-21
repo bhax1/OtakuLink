@@ -40,9 +40,7 @@ class _NotificationPageState extends State<NotificationPage> {
         await notification.reference.update({'isRead': true});
       }
     } catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $error')),
-      );
+      _showErrorSnackbar(error);
     }
   }
 
@@ -64,21 +62,19 @@ class _NotificationPageState extends State<NotificationPage> {
       }
 
       await batch.commit();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All notifications cleared.')),
-        );
-      }
-    } catch (error) {
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $error')),
+        const SnackBar(
+          content: Text('All notifications cleared.'),
+        ),
       );
+    } catch (error) {
+      _showErrorSnackbar(error);
     }
   }
 
   Future<void> _loadData() async {
     var box = await Hive.openBox('userCache');
-
     username = box.get('username');
     if (username == null && _currentUserId != null) {
       try {
@@ -95,6 +91,12 @@ class _NotificationPageState extends State<NotificationPage> {
         print('Error fetching username from Firestore: $e');
       }
     }
+  }
+
+  void _showErrorSnackbar(dynamic error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: $error')),
+    );
   }
 
   @override
@@ -117,14 +119,20 @@ class _NotificationPageState extends State<NotificationPage> {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(color: Colors.blue),
+                      ),
                     ),
                     TextButton(
                       onPressed: () async {
-                        Navigator.pop(context);
                         await _clearAllNotifications();
+                        Navigator.pop(context);
                       },
-                      child: const Text('Yes'),
+                      child: const Text(
+                        'Yes',
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ),
                   ],
                 ),
@@ -142,7 +150,8 @@ class _NotificationPageState extends State<NotificationPage> {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+                child: CircularProgressIndicator(color: Colors.amber));
           }
 
           if (snapshot.hasError) {
@@ -177,7 +186,7 @@ class _NotificationPageState extends State<NotificationPage> {
                   if (senderSnapshot.connectionState ==
                       ConnectionState.waiting) {
                     return const ListTile(
-                      leading: CircularProgressIndicator(),
+                      leading: CircularProgressIndicator(color: Colors.amber),
                       title: Text('Loading sender info...'),
                     );
                   }
@@ -190,16 +199,13 @@ class _NotificationPageState extends State<NotificationPage> {
 
                   final senderData =
                       senderSnapshot.data?.data() as Map<String, dynamic>?;
+                  final senderUsername =
+                      senderData?['username'] ?? 'Unknown User';
 
                   return Dismissible(
                     key: Key(notification.id),
                     direction: DismissDirection.endToStart,
                     onDismissed: (direction) async {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Notification deleted')),
-                        );
-                      }
                       await notification.reference.delete();
                     },
                     background: Container(
@@ -229,9 +235,7 @@ class _NotificationPageState extends State<NotificationPage> {
                                     .chain(CurveTween(curve: curve));
                                 var offsetAnimation = animation.drive(tween);
                                 return SlideTransition(
-                                  position: offsetAnimation,
-                                  child: child,
-                                );
+                                    position: offsetAnimation, child: child);
                               },
                             ),
                           );
@@ -247,7 +251,7 @@ class _NotificationPageState extends State<NotificationPage> {
                       ),
                       title: Text(notification['message']),
                       trailing: notification['edited'] == true
-                          ? null // Hide buttons if edited is true
+                          ? null
                           : Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -255,115 +259,16 @@ class _NotificationPageState extends State<NotificationPage> {
                                   icon: const Icon(Icons.close,
                                       color: Colors.red),
                                   onPressed: () async {
-                                    // Handle decline action
-                                    print(senderId);
-                                    final friendRequestQuery =
-                                        await FirebaseFirestore.instance
-                                            .collection('friends')
-                                            .where('user1Id',
-                                                isEqualTo: senderId)
-                                            .where('user2Id',
-                                                isEqualTo: _currentUserId)
-                                            .get();
-
-                                    for (var doc in friendRequestQuery.docs) {
-                                      await FirebaseFirestore.instance
-                                          .collection('friends')
-                                          .doc(doc.id)
-                                          .delete();
-                                    }
-
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Friend request declined.')),
-                                      );
-                                    }
-                                    DocumentSnapshot senderDoc =
-                                        await FirebaseFirestore.instance
-                                            .collection('users')
-                                            .doc(senderId)
-                                            .get();
-                                    await notification.reference.update({
-                                      'message':
-                                          'Declined friend request from ${senderDoc['username']}.',
-                                      'edited': true
-                                    });
+                                    await _handleFriendRequestDecline(
+                                        senderId, senderUsername, notification);
                                   },
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.check,
                                       color: Colors.green),
                                   onPressed: () async {
-                                    // Handle accept action
-                                    final friendRequestDoc =
-                                        await FirebaseFirestore.instance
-                                            .collection('friends')
-                                            .where('user1Id',
-                                                isEqualTo: senderId)
-                                            .where('user2Id',
-                                                isEqualTo: _currentUserId)
-                                            .limit(1)
-                                            .get();
-
-                                    if (friendRequestDoc.docs.isNotEmpty) {
-                                      final docRef =
-                                          friendRequestDoc.docs.first.reference;
-
-                                      await docRef.update({
-                                        'status': 'friends',
-                                        'timestamp': FieldValue.serverTimestamp(),
-                                      });
-                                    }
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(_currentUserId)
-                                        .update({
-                                      'friends':
-                                          FieldValue.arrayUnion([senderId])
-                                    });
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(senderId)
-                                        .update({
-                                      'friends': FieldValue.arrayUnion(
-                                          [_currentUserId])
-                                    });
-
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                'Friend request accepted.')),
-                                      );
-                                    }
-                                    DocumentSnapshot senderDoc =
-                                        await FirebaseFirestore.instance
-                                            .collection('users')
-                                            .doc(senderId)
-                                            .get();
-                                    await notification.reference.update({
-                                      'message':
-                                          'Accepted friend request from ${senderDoc['username']}.',
-                                      'edited': true
-                                    });
-
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(_currentUserId)
-                                        .update({
-                                      'friendsCount': FieldValue.increment(1),
-                                    });
-
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(senderId)
-                                        .update({
-                                      'friendsCount': FieldValue.increment(1),
-                                    });
+                                    await _handleFriendRequestAcceptance(
+                                        senderId, senderUsername, notification);
                                   },
                                 ),
                               ],
@@ -377,5 +282,63 @@ class _NotificationPageState extends State<NotificationPage> {
         },
       ),
     );
+  }
+
+  Future<void> _handleFriendRequestDecline(String senderId,
+      String senderUsername, QueryDocumentSnapshot notification) async {
+    final friendRequestQuery = await FirebaseFirestore.instance
+        .collection('friends')
+        .where('user1Id', isEqualTo: senderId)
+        .where('user2Id', isEqualTo: _currentUserId)
+        .get();
+
+    for (var doc in friendRequestQuery.docs) {
+      await FirebaseFirestore.instance
+          .collection('friends')
+          .doc(doc.id)
+          .delete();
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Friend request declined.')));
+    await notification.reference.update({
+      'message': 'Declined friend request from $senderUsername.',
+      'edited': true,
+    });
+  }
+
+  Future<void> _handleFriendRequestAcceptance(String senderId,
+      String senderUsername, QueryDocumentSnapshot notification) async {
+    final friendRequestDoc = await FirebaseFirestore.instance
+        .collection('friends')
+        .where('user1Id', isEqualTo: senderId)
+        .where('user2Id', isEqualTo: _currentUserId)
+        .limit(1)
+        .get();
+
+    if (friendRequestDoc.docs.isNotEmpty) {
+      final docRef = friendRequestDoc.docs.first.reference;
+      await docRef.update(
+          {'status': 'friends', 'timestamp': FieldValue.serverTimestamp()});
+    }
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_currentUserId)
+        .update({
+      'friendsCount': FieldValue.increment(1),
+      'friends': FieldValue.arrayUnion([senderId])
+    });
+    await FirebaseFirestore.instance.collection('users').doc(senderId).update({
+      'friendsCount': FieldValue.increment(1),
+      'friends': FieldValue.arrayUnion([_currentUserId])
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Friend request accepted.')));
+    await notification.reference.update({
+      'message': 'Accepted friend request from $senderUsername.',
+      'edited': true,
+    });
   }
 }

@@ -18,6 +18,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // Controllers for input fields
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
   final _formKey = GlobalKey<FormState>();
 
   // Password visibility toggle
@@ -30,32 +32,57 @@ class _LoginScreenState extends State<LoginScreen> {
   // Method: Handles user login
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      FocusScope.of(context).unfocus(); // Dismiss keyboard
+      _emailFocusNode.unfocus(); // Unfocus both fields
+      _passwordFocusNode.unfocus();
       setState(() => _isLoading = true);
 
       try {
+        String emailOrUsername = _emailController.text;
+        String emailToUse = emailOrUsername;
+
+        // Check if input is not an email format
+        if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(emailOrUsername)) {
+          // Search Firestore for a matching username
+          QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+              .collection('users')
+              .where('username', isEqualTo: emailOrUsername)
+              .limit(1)
+              .get();
+
+          if (querySnapshot.docs.isEmpty) {
+            throw FirebaseAuthException(
+              code: 'user-not-found',
+              message: 'Username not found. Please check and try again.',
+            );
+          }
+
+          // Retrieve the associated email
+          emailToUse = querySnapshot.docs.first.get('email');
+        }
+
+        // Sign in using the resolved email
         final userCredential = await _auth.signInWithEmailAndPassword(
-          email: _emailController.text,
+          email: emailToUse,
           password: _passwordController.text,
         );
 
         if (!userCredential.user!.emailVerified) {
           _showSnackbar('Please verify your email first.');
         } else {
-          // Fetch username from Firestore
           String uid = userCredential.user!.uid;
-          DocumentSnapshot userDoc =
-              await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          DocumentSnapshot userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get();
 
-          Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
+          Map<String, dynamic>? userData =
+              userDoc.data() as Map<String, dynamic>?;
 
-          // Save user data to SharedPreferences
           var box = Hive.box('userCache');
           box.put('email', userCredential.user!.email!);
           box.put('uid', uid);
           box.put('username', userData?['username'] ?? 'Default Username');
 
-          // Only navigate if still mounted
           if (mounted) {
             _navigateTo(const HomeScreen());
           }
@@ -71,7 +98,9 @@ class _LoginScreenState extends State<LoginScreen> {
   // Helper: Displays a snackbar
   void _showSnackbar(String message, {Duration? duration}) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: duration ?? const Duration(seconds: 3)),
+      SnackBar(
+          content: Text(message),
+          duration: duration ?? const Duration(seconds: 3)),
     );
   }
 
@@ -89,7 +118,8 @@ class _LoginScreenState extends State<LoginScreen> {
   void _navigateTo(Widget screen) {
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (_, animation, __) => FadeTransition(opacity: animation, child: screen),
+        pageBuilder: (_, animation, __) =>
+            FadeTransition(opacity: animation, child: screen),
         transitionDuration: const Duration(milliseconds: 200),
       ),
     );
@@ -125,40 +155,43 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: Stack(
-        children: [
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Logo
-                    Image.asset('assets/logo/logo_flat1.png', height: 150),
-                    const SizedBox(height: 20),
-                    // Welcome text
-                    _buildWelcomeText(),
-                    const SizedBox(height: 30),
-                    // Input fields and actions
-                    _buildEmailField(),
-                    const SizedBox(height: 20),
-                    _buildPasswordField(),
-                    _buildForgotPasswordLink(),
-                    const SizedBox(height: 10),
-                    _buildLoginButton(),
-                    const SizedBox(height: 20),
-                    _buildSignUpLink(),
-                  ],
+    return GestureDetector(
+      onTap: () {
+        _emailFocusNode.unfocus();
+        _passwordFocusNode.unfocus();
+      },
+      child: Scaffold(
+        backgroundColor: backgroundColor,
+        body: Stack(
+          children: [
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Image.asset('assets/logo/logo_flat1.png', height: 150),
+                      const SizedBox(height: 20),
+                      _buildWelcomeText(),
+                      const SizedBox(height: 30),
+                      _buildEmailField(),
+                      const SizedBox(height: 20),
+                      _buildPasswordField(),
+                      _buildForgotPasswordLink(),
+                      const SizedBox(height: 10),
+                      _buildLoginButton(),
+                      const SizedBox(height: 20),
+                      _buildSignUpLink(),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          _buildOverlay(),
-        ],
+            _buildOverlay(),
+          ],
+        ),
       ),
     );
   }
@@ -175,15 +208,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // UI: Email input field
+  // UI: Email/Username input field
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailController,
-      decoration: _inputDecoration(label: 'Email', icon: Icons.email),
-      keyboardType: TextInputType.emailAddress,
+      focusNode: _emailFocusNode,
+      cursorColor: accentColor,
+      decoration: _inputDecoration(
+        label: 'Email / Username',
+        icon: Icons.person,
+      ),
       validator: (value) {
-        if (value == null || value.isEmpty) return 'Please enter your email';
-        if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Enter a valid email address';
+        if (value == null || value.isEmpty)
+          return 'Please enter your email or username';
         return null;
       },
     );
@@ -193,18 +230,23 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passwordController,
+      focusNode: _passwordFocusNode,
+      cursorColor: accentColor,
       decoration: _inputDecoration(
         label: 'Password',
         icon: Icons.lock,
         suffix: IconButton(
-          icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
-          onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+          icon: Icon(
+              _isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+          onPressed: () =>
+              setState(() => _isPasswordVisible = !_isPasswordVisible),
         ),
       ),
       obscureText: !_isPasswordVisible,
       validator: (value) {
         if (value == null || value.isEmpty) return 'Please enter your password';
-        if (value.length < 6) return 'Password must be at least 6 characters long';
+        if (value.length < 6)
+          return 'Password must be at least 6 characters long';
         return null;
       },
     );
@@ -215,7 +257,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return Align(
       alignment: Alignment.centerRight,
       child: TextButton(
-        onPressed: _isLoading ? null : () => _navigateTo(const ForgotPasswordScreen()),
+        onPressed:
+            _isLoading ? null : () => _navigateTo(const ForgotPasswordScreen()),
         child: Text(
           'Forgot Password?',
           style: TextStyle(color: _isLoading ? Colors.grey : accentColor),
@@ -233,7 +276,9 @@ class _LoginScreenState extends State<LoginScreen> {
         padding: const EdgeInsets.symmetric(vertical: 15),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      child: const Text('Log In', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+      child: const Text('Log In',
+          style: TextStyle(
+              fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
     );
   }
 
@@ -244,7 +289,8 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         const Text('Don’t have an account?'),
         TextButton(
-          onPressed: _isLoading ? null : () => _navigateTo(const SignUpScreen()),
+          onPressed:
+              _isLoading ? null : () => _navigateTo(const SignUpScreen()),
           child: Text(
             'Sign Up',
             style: TextStyle(color: _isLoading ? Colors.grey : accentColor),
@@ -255,10 +301,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Helper: Common input field decoration
-  InputDecoration _inputDecoration({required String label, required IconData icon, Widget? suffix}) {
+  InputDecoration _inputDecoration(
+      {required String label, required IconData icon, Widget? suffix}) {
     return InputDecoration(
       labelText: label,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      labelStyle: TextStyle(color: primaryColor),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: primaryColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: primaryColor, width: 2),
+      ),
       prefixIcon: Icon(icon),
       suffixIcon: suffix,
     );
@@ -268,6 +323,8 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 }

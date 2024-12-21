@@ -12,14 +12,14 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final FocusNode _emailFocusNode = FocusNode();
   bool _isLoading = false;
 
   // Send reset link logic using Firebase Auth
   void _sendResetLink() async {
     if (_formKey.currentState!.validate()) {
-      // Dismiss the keyboard
-      FocusScope.of(context).unfocus();
-      
+      _emailFocusNode.unfocus();
+
       setState(() {
         _isLoading = true;
       });
@@ -69,63 +69,66 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Color(0xFF33415C); // Primary color for styling
-
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          // Background Image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/background/bg_fp.png', // Add your image path here
-              alignment: Alignment.bottomCenter,
-            ),
-          ),
-          // Form Content
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildTitle(primaryColor),
-                  SizedBox(height: 20),
-                  _buildEmailInput(),
-                  SizedBox(height: 20),
-                  _buildActionButton(primaryColor),
-                ],
+    return GestureDetector(
+      onTap: () {
+        _emailFocusNode.unfocus();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: primaryColor,
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        resizeToAvoidBottomInset: false,
+        body: Stack(
+          children: [
+            // Background Image
+            Positioned.fill(
+              child: Image.asset(
+                'assets/background/bg_fp.png', // Add your image path here
+                alignment: Alignment.bottomCenter,
               ),
             ),
-          ),
-          // Disable the whole screen while loading
-          if (_isLoading)
-            Container(
-              color: Colors.black.withOpacity(0.5),
-              child: Center(
+            // Form Content
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
+                key: _formKey,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    CircularProgressIndicator(color: accentColor),
+                    _buildTitle(primaryColor),
                     SizedBox(height: 20),
-                    Text(
-                      'Sending link...',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    _buildEmailInput(),
+                    SizedBox(height: 20),
+                    _buildActionButton(primaryColor),
                   ],
                 ),
               ),
             ),
-        ],
+            // Disable the whole screen while loading
+            if (_isLoading)
+              Container(
+                color: Colors.black.withOpacity(0.5),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: accentColor),
+                      SizedBox(height: 20),
+                      Text(
+                        'Sending link...',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -147,10 +150,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _buildEmailInput() {
     return TextFormField(
       controller: _emailController,
+      focusNode: _emailFocusNode,
+      cursorColor: accentColor,
       decoration: InputDecoration(
         labelText: 'Enter your email',
+        labelStyle: TextStyle(color: primaryColor),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryColor, width: 2),
         ),
         prefixIcon: Icon(Icons.email),
       ),

@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:otakulink/main.dart';
-import 'package:otakulink/pages/login_screen.dart';
 
 class SettingPage extends StatefulWidget {
   const SettingPage({super.key});
@@ -23,7 +23,7 @@ class _SettingPageState extends State<SettingPage> {
 
     // Step 1: Show confirmation dialog
     bool confirmReset = await _showConfirmationDialog();
-    if (!confirmReset) return;
+    if (!confirmReset) return; // Exit if canceled
 
     // Step 2: Proceed with password change if confirmed
     await showDialog(
@@ -35,100 +35,134 @@ class _SettingPageState extends State<SettingPage> {
           title: const Text('Change Password'),
           content: TextField(
             controller: passwordController,
-            decoration: const InputDecoration(hintText: 'Enter new password'),
+            cursorColor: accentColor,
+            decoration: InputDecoration(
+              hintText: 'Enter new password',
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: primaryColor),
+              ),
+            ),
             obscureText: true,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
             TextButton(
               onPressed: () {
                 newPassword = passwordController.text.trim();
-                Navigator.of(context).pop();
+                if (newPassword!.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Password cannot be blank')),
+                  );
+                } else {
+                  Navigator.of(context).pop();
+                }
               },
-              child: const Text('Save'),
+              child: const Text(
+                'Save',
+                style: TextStyle(color: Colors.blueAccent),
+              ),
             ),
           ],
         );
       },
     );
 
-    if (newPassword != null && newPassword!.isNotEmpty) {
-      try {
-        // Disable interactions by showing a loading dialog
-        showDialog(
+    // If password is null or empty, do not proceed
+    if (newPassword == null || newPassword!.isEmpty) return;
+
+    try {
+      // Disable interactions by showing a loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false, // Prevent interaction outside the dialog
+        builder: (context) {
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.amber),
+          );
+        },
+      );
+
+      final User? user = _auth.currentUser;
+
+      // Step 3: Re-authenticate user before allowing password change (optional but recommended)
+      if (user != null) {
+        String? currentPassword;
+
+        // Step 4: Request current password for re-authentication
+        await showDialog(
           context: context,
-          barrierDismissible: false, // Prevent interaction outside the dialog
           builder: (context) {
-            return const Center(
-              child: CircularProgressIndicator(),
+            TextEditingController passwordController = TextEditingController();
+            return AlertDialog(
+              title: const Text('Enter Current Password'),
+              content: TextField(
+                controller: passwordController,
+                decoration:
+                    const InputDecoration(hintText: 'Enter current password'),
+                obscureText: true,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    currentPassword = passwordController.text.trim();
+                    if (currentPassword!.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Current password cannot be blank'),
+                        ),
+                      );
+                    } else {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: const Text(
+                    'Authenticate',
+                    style: TextStyle(color: Colors.green),
+                  ),
+                ),
+              ],
             );
           },
         );
 
-        final User? user = _auth.currentUser;
-
-        // Step 3: Re-authenticate user before allowing password change (optional but recommended)
-        if (user != null) {
-          String? currentPassword;
-
-          // Step 4: Request current password for re-authentication
-          await showDialog(
-            context: context,
-            builder: (context) {
-              TextEditingController passwordController = TextEditingController();
-              return AlertDialog(
-                title: const Text('Enter Current Password'),
-                content: TextField(
-                  controller: passwordController,
-                  decoration: const InputDecoration(hintText: 'Enter current password'),
-                  obscureText: true,
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      currentPassword = passwordController.text.trim();
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text('Authenticate'),
-                  ),
-                ],
-              );
-            },
+        // Re-authenticate user before updating password
+        if (currentPassword != null && currentPassword!.isNotEmpty) {
+          AuthCredential credential = EmailAuthProvider.credential(
+            email: user.email!,
+            password: currentPassword!,
           );
 
-          // Re-authenticate user before updating password
-          if (currentPassword != null && currentPassword!.isNotEmpty) {
-            AuthCredential credential = EmailAuthProvider.credential(
-              email: user.email!,
-              password: currentPassword!,
-            );
-
-            await user.reauthenticateWithCredential(credential);
-          }
+          await user.reauthenticateWithCredential(credential);
         }
-
-        // Step 5: Update the password
-        await _auth.currentUser?.updatePassword(newPassword!);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password updated successfully!')),
-        );
-
-        // Close the loading dialog
-        Navigator.of(context).pop();
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update password: $e')),
-        );
-        // Close the loading dialog in case of an error
-        Navigator.of(context).pop();
       }
+
+      // Step 5: Update the password
+      await _auth.currentUser?.updatePassword(newPassword!);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password updated successfully!')),
+      );
+
+      // Close the loading dialog
+      Navigator.of(context).pop();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update password: $e')),
+      );
+      // Close the loading dialog in case of an error
+      Navigator.of(context).pop();
     }
   }
 
@@ -147,14 +181,14 @@ class _SettingPageState extends State<SettingPage> {
                 confirmReset = false;
                 Navigator.of(context).pop();
               },
-              child: const Text('Cancel'),
+              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
             ),
             TextButton(
               onPressed: () {
                 confirmReset = true;
                 Navigator.of(context).pop();
               },
-              child: const Text('Yes'),
+              child: const Text('Yes', style: TextStyle(color: Colors.green)),
             ),
           ],
         );
@@ -163,76 +197,88 @@ class _SettingPageState extends State<SettingPage> {
     return confirmReset;
   }
 
-  // Delete account with confirmation
-  Future<void> _deleteAccount() async {
+  // Change username logic
+  Future<void> _changeUsername() async {
     final User? user = _auth.currentUser;
     if (user == null) return;
 
-    String? password;
+    String? newUsername;
 
+    // Show dialog to input new username
     await showDialog(
       context: context,
       builder: (context) {
-        TextEditingController passwordController = TextEditingController();
+        TextEditingController usernameController = TextEditingController();
 
         return AlertDialog(
-          title: const Text('Confirm Account Deletion'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Deleting your account is irreversible and all your data will be permanently lost. Are you sure you want to continue?',
-                style: TextStyle(color: Colors.red),
+          title: const Text('Change Username'),
+          content: TextField(
+            controller: usernameController,
+            decoration: InputDecoration(
+              hintText: 'Enter new username',
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: primaryColor),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: passwordController,
-                decoration: const InputDecoration(hintText: 'Enter your password'),
-                obscureText: true,
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.red),
+              ),
             ),
             TextButton(
               onPressed: () {
-                password = passwordController.text.trim();
+                newUsername = usernameController.text.trim();
                 Navigator.of(context).pop();
               },
-              child: const Text('Delete'),
+              child: const Text(
+                'Save',
+                style: TextStyle(color: Colors.blueAccent),
+              ),
             ),
           ],
         );
       },
     );
 
-    if (password != null && password!.isNotEmpty) {
+    if (newUsername != null && newUsername!.isNotEmpty) {
       try {
-        // Re-authenticate the user before deletion
-        AuthCredential credential = EmailAuthProvider.credential(
-          email: user.email!,
-          password: password!,
+        // Disable interactions by showing a loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false, // Prevent interaction outside the dialog
+          builder: (context) {
+            return const Center(
+              child: CircularProgressIndicator(color: Colors.amber),
+            );
+          },
         );
-        await user.reauthenticateWithCredential(credential);
 
-        // Delete user's data from Firestore
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+        FirebaseFirestore firestore = FirebaseFirestore.instance;
+        DocumentReference userRef = firestore.collection('users').doc(user.uid);
 
-        // Delete the user account
-        await user.delete();
+        // Step 5: Update the username
+        await userRef.update({'username': newUsername});
 
-        // Navigate to login screen after deletion
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        // Update the username in Hive cache
+        final userCache = Hive.box('userCache');
+        userCache.put('username', newUsername); // Update the cached username
+
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Username updated successfully!'),
+          ),
         );
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete account: $e')),
+          SnackBar(content: Text('Failed to update username: $e')),
         );
+        // Close the loading dialog in case of an error
+        Navigator.of(context).pop();
       }
     }
   }
@@ -259,36 +305,10 @@ class _SettingPageState extends State<SettingPage> {
               onTap: _changePassword,
             ),
             const Divider(),
-            SwitchListTile(
-              title: const Text('Dark Theme'),
-              value: isDarkTheme,
-              onChanged: (bool value) {
-                setState(() {
-                  isDarkTheme = value;
-                });
-              },
-              activeColor: accentColor,
-              inactiveThumbColor: Colors.grey,
-              secondary: const Icon(Icons.dark_mode, color: Colors.blueGrey),
-            ),
-            const Divider(),
-            SwitchListTile(
-              title: const Text('Enable Feature X'),
-              value: toggleFeature,
-              onChanged: (bool value) {
-                setState(() {
-                  toggleFeature = value;
-                });
-              },
-              activeColor: Colors.orangeAccent,
-              inactiveThumbColor: Colors.grey,
-              secondary: const Icon(Icons.toggle_on, color: Colors.blueGrey),
-            ),
-            const Divider(),
             ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Account'),
-              onTap: _deleteAccount,
+              leading: const Icon(Icons.account_circle, color: Colors.blue),
+              title: const Text('Change Username'),
+              onTap: _changeUsername,
             ),
           ],
         ),

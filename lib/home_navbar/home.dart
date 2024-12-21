@@ -1,72 +1,108 @@
 import 'dart:convert';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:auto_size_text/auto_size_text.dart';
-import 'package:otakulink/home_navbar/mangadetails.dart';
 import 'package:otakulink/main.dart';
+import '../widgets_card/manga_card.dart';
 
-class HomePage extends StatefulWidget {
+// Providers for state management
+final mangaPageProvider = StateProvider<int>((ref) => 1);
+final manhwaPageProvider = StateProvider<int>((ref) => 1);
+
+final mangaDataProvider =
+    FutureProvider.family<List<dynamic>, int>((ref, page) async {
+  return fetchData('manga', page);
+});
+
+final manhwaDataProvider =
+    FutureProvider.family<List<dynamic>, int>((ref, page) async {
+  return fetchData('manhwa', page);
+});
+
+List<String> filters = ['publishing', 'bypopularity', 'favorite'];
+
+Future<List<dynamic>> fetchData(String type, int page) async {
+  var box = await Hive.openBox('mangaCache');
+  final cacheKey = '$type$page';
+  final cachedData = box.get(cacheKey);
+  final cachedTimestamp = box.get('$cacheKey-timestamp');
+
+  if (cachedData != null &&
+      cachedTimestamp != null &&
+      DateTime.now().millisecondsSinceEpoch - cachedTimestamp < 86400000) {
+    return List<dynamic>.from(json.decode(cachedData));
+  }
+
+  String randomFilter = filters[
+      (DateTime.now().millisecondsSinceEpoch ~/ 86400000) % filters.length];
+
+  final url =
+      'https://api.jikan.moe/v4/top/manga?type=$type&filter=$randomFilter&limit=10&page=$page';
+  final response = await http.get(Uri.parse(url));
+
+  if (response.statusCode == 200) {
+    var data = json.decode(response.body)['data'];
+
+    final filteredData = (data as List).map((item) {
+      return {
+        'title': item['title'] ?? 'Unknown Title',
+        'images': item['images'],
+        'mal_id': item['mal_id'],
+      };
+    }).toList();
+
+    box.put(cacheKey, json.encode(filteredData));
+    box.put('$cacheKey-timestamp', DateTime.now().millisecondsSinceEpoch);
+
+    return filteredData;
+  } else {
+    throw Exception('Failed to load $type');
+  }
+}
+
+class HomePage extends ConsumerWidget {
   const HomePage({super.key});
 
   @override
-  _HomePageState createState() => _HomePageState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mangaPage = ref.watch(mangaPageProvider);
+    final manhwaPage = ref.watch(manhwaPageProvider);
 
-class _HomePageState extends State<HomePage> {
-  late Future<List<dynamic>> popularManga;
-  late Future<List<dynamic>> popularManhwa;
+    final mangaData = ref.watch(mangaDataProvider(mangaPage));
+    final manhwaData = ref.watch(manhwaDataProvider(manhwaPage));
 
-  int mangaPage = 1;
-  int manhwaPage = 1;
-
-  // Caching data for pagination
-  Map<int, List<dynamic>> cachedManga = {};
-  Map<int, List<dynamic>> cachedManhwa = {};
-
-  @override
-  void initState() {
-    super.initState();
-    popularManga = _getData('manga', mangaPage);
-    popularManhwa = _getData('manhwa', manhwaPage);
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(mangaDataProvider);
+        ref.invalidate(manhwaDataProvider);
+      },
+      color: backgroundColor,
+      backgroundColor: primaryColor,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+              buildCategory(
+                  context, ref, 'Popular Manga', mangaData, mangaPageProvider),
+              const SizedBox(height: 20),
+              buildCategory(context, ref, 'Hottest Manhwa', manhwaData,
+                  manhwaPageProvider),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  // Fetch data with caching mechanism
-  Future<List<dynamic>> _getData(String type, int page) async {
-    var box = await Hive.openBox('mangaCache'); // Open a Hive box
-
-    final cacheKey = '$type$page';
-    final cachedData = box.get(cacheKey);
-    final cachedTimestamp = box.get('$cacheKey-timestamp');
-
-    if (cachedData != null &&
-        cachedTimestamp != null &&
-        DateTime.now().millisecondsSinceEpoch - cachedTimestamp < 86400000) {
-      return List<dynamic>.from(json.decode(cachedData));
-    }
-
-    final url =
-        'https://api.jikan.moe/v4/top/manga?type=$type&filter=bypopularity&limit=10&page=$page';
-    final response = await http.get(Uri.parse(url));
-
-    if (response.statusCode == 200) {
-      var data = json.decode(response.body)['data'];
-
-      // Store the fetched data and timestamp in Hive
-      box.put(cacheKey, json.encode(data));
-      box.put('$cacheKey-timestamp', DateTime.now().millisecondsSinceEpoch);
-
-      return data;
-    } else {
-      throw Exception('Failed to load $type');
-    }
-  }
-
-  // Reusable widget for displaying categories (Manga/Manhwa/Manhua)
-  Widget buildCategory(
-      String title, Future<List<dynamic>> data, String categoryType) {
+  Widget buildCategory(BuildContext context, WidgetRef ref, String title,
+      AsyncValue<List<dynamic>> data, StateProvider<int> pageProvider) {
+    final currentPage = ref.watch(pageProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -77,21 +113,12 @@ class _HomePageState extends State<HomePage> {
           minFontSize: 18,
         ),
         const SizedBox(height: 10),
-        FutureBuilder<List<dynamic>>(
-          future: data,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return _buildPlaceholderRow();
-            } else if (snapshot.hasError ||
-                !snapshot.hasData ||
-                snapshot.data!.isEmpty) {
-              return _buildErrorRow();
-            } else {
-              return _buildMangaList(snapshot.data!);
-            }
-          },
+        data.when(
+          loading: () => _buildPlaceholderRow(),
+          error: (error, stack) => _buildErrorRow(ref, pageProvider),
+          data: (items) => _buildMangaList(items),
         ),
-        buildPaginationButtons(categoryType),
+        buildPaginationButtons(ref, pageProvider, currentPage),
       ],
     );
   }
@@ -104,13 +131,13 @@ class _HomePageState extends State<HomePage> {
         itemCount: data.length > 10 ? 10 : data.length,
         itemBuilder: (context, index) {
           var manga = data[index];
-          return MangaCard(manga: manga);
+          return MangaCard(
+              manga: manga, userId: FirebaseAuth.instance.currentUser?.uid);
         },
       ),
     );
   }
 
-  // Placeholder row while loading
   Widget _buildPlaceholderRow() {
     return SizedBox(
       height: 240,
@@ -122,8 +149,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Error row when data fails to load
-  Widget _buildErrorRow() {
+  Widget _buildErrorRow(WidgetRef ref, StateProvider<int> pageProvider) {
     return SizedBox(
       height: 240,
       child: Center(
@@ -135,10 +161,7 @@ class _HomePageState extends State<HomePage> {
             Text('Failed to load data'),
             ElevatedButton(
               onPressed: () {
-                setState(() {
-                  popularManga = _getData('manga', mangaPage);
-                  popularManhwa = _getData('manhwa', manhwaPage);
-                });
+                ref.invalidate(pageProvider);
               },
               child: Text('Retry'),
             ),
@@ -148,170 +171,105 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Reusable pagination buttons for manga, manhwa, and manhua
-  Widget buildPaginationButtons(String categoryType) {
-    int currentPage = (categoryType == 'manga') ? mangaPage : manhwaPage;
-    Function onPageChange = (int newPage) {
-      setState(() {
-        if (categoryType == 'manga') {
-          mangaPage = newPage;
-          popularManga = _getData('manga', mangaPage);
-        } else {
-          manhwaPage = newPage;
-          popularManhwa = _getData('manhwa', manhwaPage);
-        }
-      });
-    };
-
+  Widget buildPaginationButtons(
+      WidgetRef ref, StateProvider<int> pageProvider, int currentPage) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed:
-              currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
+          onPressed: currentPage > 1
+              ? () => ref.read(pageProvider.notifier).state--
+              : null,
         ),
-        Text('Page $currentPage'),
+        TextButton(
+          onPressed: () => _showPageInputDialog(ref, pageProvider),
+          child: Text(
+            'Page $currentPage',
+            style: TextStyle(fontSize: 14, color: Colors.black),
+          ),
+        ),
         IconButton(
           icon: const Icon(Icons.arrow_forward),
-          onPressed: () => onPageChange(currentPage + 1),
+          onPressed: () => ref.read(pageProvider.notifier).state++,
         ),
       ],
     );
   }
 
-  // Refresh function
-  Future<void> _refreshData() async {
-    setState(() {
-      popularManga = _getData('manga', mangaPage);
-      popularManhwa = _getData('manhwa', manhwaPage);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _refreshData,
-      color: backgroundColor,
-      backgroundColor: primaryColor,
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-              buildCategory('Popular Manga', popularManga, 'manga'),
-              const SizedBox(height: 20),
-              buildCategory('Hottest Manhwa', popularManhwa, 'manhwa'),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class MangaCard extends StatelessWidget {
-  final dynamic manga;
-  final bool isPlaceholder;
-
-  const MangaCard({Key? key, this.manga, this.isPlaceholder = false})
-      : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: isPlaceholder
-          ? null
-          : () {
-              Navigator.push(
-                context,
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) {
-                    return MangaDetailsPage(
-                      mangaId: manga['mal_id'],
-                      userId: FirebaseAuth.instance.currentUser!.uid,
-                    );
-                  },
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                    const begin = Offset(1.0, 0.0);
-                    const end = Offset.zero;
-                    const curve = Curves.fastOutSlowIn;
-                    var tween = Tween(begin: begin, end: end)
-                        .chain(CurveTween(curve: curve));
-                    var offsetAnimation = animation.drive(tween);
-                    return SlideTransition(
-                      position: offsetAnimation,
-                      child: child,
-                    );
-                  },
-                ),
-              );
-            },
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        color: Theme.of(context).cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        elevation: 5,
-        child: SizedBox(
-          width: 130,
-          height: 250,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (!isPlaceholder)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: CachedNetworkImage(
-                    imageUrl: manga?['images']?['jpg']?['image_url'] ?? '',
-                    width: 120,
-                    height: 150,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[300],
-                      width: 120,
-                      height: 150,
-                    ),
-                    errorWidget: (context, url, error) =>
-                        const Icon(Icons.broken_image, size: 100),
+  Future<void> _showPageInputDialog(
+      WidgetRef ref, StateProvider<int> pageProvider) async {
+    TextEditingController pageController = TextEditingController();
+    final _formKey = GlobalKey<FormState>(); // Form key for validation
+    return showDialog(
+      context: ref.context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Enter Page Number'),
+          content: Form(
+            key: _formKey,
+            child: TextSelectionTheme(
+              data: TextSelectionThemeData(
+                selectionColor: Colors.grey,
+                selectionHandleColor: primaryColor,
+              ),
+              child: TextFormField(
+                controller: pageController,
+                keyboardType: TextInputType.number,
+                cursorColor: accentColor,
+                decoration: InputDecoration(
+                  hintText: 'Page number',
+                  errorText: _formKey.currentState?.validate() == false
+                      ? 'Page number must be a valid number greater than 0'
+                      : null,
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: primaryColor),
                   ),
-                )
-              else
-                Container(
-                  width: 120,
-                  height: 150,
-                  color: Colors.grey[300],
                 ),
-              const SizedBox(height: 10),
-              if (!isPlaceholder)
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    manga?['title'] ?? '',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                      fontSize: 14,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                )
-              else
-                Container(
-                  width: 120,
-                  height: 16,
-                  color: Colors.grey[300],
-                ),
-            ],
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a page number';
+                  }
+                  // Check if the value is a valid positive integer and greater than 0
+                  final pageNumber = int.tryParse(value);
+                  if (pageNumber == null) {
+                    return 'Page number must be a valid number';
+                  } else if (pageNumber <= 0) {
+                    return 'Page number must be greater than 0';
+                  }
+                  return null; // No error
+                },
+              ),
+            ),
           ),
-        ),
-      ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                FocusScope.of(context).unfocus();
+                Navigator.pop(context);
+              },
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                if (_formKey.currentState?.validate() == true) {
+                  String input = pageController.text;
+                  int newPage = int.parse(input);
+                  ref.read(pageProvider.notifier).state = newPage;
+                  Navigator.pop(context);
+                }
+              },
+              child: Text(
+                'OK',
+                style: TextStyle(color: Colors.blueAccent),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
