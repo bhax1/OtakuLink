@@ -1,4 +1,4 @@
-# otakulink
+# Otakulink
 
 A new Flutter project.
 
