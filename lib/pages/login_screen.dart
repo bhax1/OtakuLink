@@ -15,34 +15,32 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Controllers for input fields
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final FocusNode _emailFocusNode = FocusNode();
   final FocusNode _passwordFocusNode = FocusNode();
   final _formKey = GlobalKey<FormState>();
 
-  // Password visibility toggle
   bool _isPasswordVisible = false;
   bool _isLoading = false;
+  bool _showResendButton = false; // 👈 new
 
-  // Firebase Auth instance
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // Method: Handles user login
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      _emailFocusNode.unfocus(); // Unfocus both fields
+      _emailFocusNode.unfocus();
       _passwordFocusNode.unfocus();
-      setState(() => _isLoading = true);
+      setState(() {
+        _isLoading = true;
+        _showResendButton = false; // reset each login attempt
+      });
 
       try {
         String emailOrUsername = _emailController.text;
         String emailToUse = emailOrUsername;
 
-        // Check if input is not an email format
         if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(emailOrUsername)) {
-          // Search Firestore for a matching username
           QuerySnapshot querySnapshot = await FirebaseFirestore.instance
               .collection('users')
               .where('username', isEqualTo: emailOrUsername)
@@ -55,21 +53,25 @@ class _LoginScreenState extends State<LoginScreen> {
               message: 'Username not found. Please check and try again.',
             );
           }
-
-          // Retrieve the associated email
           emailToUse = querySnapshot.docs.first.get('email');
         }
 
-        // Sign in using the resolved email
         final userCredential = await _auth.signInWithEmailAndPassword(
           email: emailToUse,
           password: _passwordController.text,
         );
 
-        if (!userCredential.user!.emailVerified) {
-          _showSnackbar('Please verify your email first.');
+        User user = userCredential.user!;
+        if (!user.emailVerified) {
+          await user.sendEmailVerification(); // 👈 auto resend
+          _showSnackbar(
+            "Your email is not verified or the link expired.\n"
+            "We’ve sent a new verification email.",
+          );
+          setState(() => _showResendButton = true); // 👈 show button
+          await _auth.signOut();
         } else {
-          String uid = userCredential.user!.uid;
+          String uid = user.uid;
           DocumentSnapshot userDoc = await FirebaseFirestore.instance
               .collection('users')
               .doc(uid)
@@ -79,13 +81,11 @@ class _LoginScreenState extends State<LoginScreen> {
               userDoc.data() as Map<String, dynamic>?;
 
           var box = Hive.box('userCache');
-          box.put('email', userCredential.user!.email!);
+          box.put('email', user.email!);
           box.put('uid', uid);
           box.put('username', userData?['username'] ?? 'Default Username');
 
-          if (mounted) {
-            _navigateTo(const HomeScreen());
-          }
+          if (mounted) _navigateTo(const HomeScreen());
         }
       } on FirebaseAuthException catch (e) {
         _showSnackbar(_getErrorMessage(e));
@@ -95,26 +95,44 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Helper: Displays a snackbar
-  void _showSnackbar(String message, {Duration? duration}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(message),
-          duration: duration ?? const Duration(seconds: 3)),
-    );
-  }
-
-  // Helper: Fetches error messages
-  String _getErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-email':
-        return 'Email or password is incorrect. Please try again.';
-      default:
-        return e.message ?? 'An error occurred. Please try again.';
+  Future<void> _resendVerificationEmail() async {
+    try {
+      final user = _auth.currentUser;
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+        _showSnackbar("New verification email sent!");
+        await _auth.signOut();
+      } else {
+        _showSnackbar("Login first to resend verification email.");
+      }
+    } catch (e) {
+      _showSnackbar("Error sending verification email.");
     }
   }
 
-  // Navigation helper with fade transition
+  void _showSnackbar(String message, {Duration? duration}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: duration ?? const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  String _getErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-credential':
+        return 'Incorrect email, username, or password.\nPlease try again.';
+      case 'user-not-found':
+      case 'invalid-email':
+        return 'Email or username not found. Please check your credentials.';
+      case 'too-many-requests':
+        return 'Too many login attempts. Please try again later.';
+      default:
+        return e.message ?? 'An unexpected error occurred. Please try again.';
+    }
+  }
+
   void _navigateTo(Widget screen) {
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -125,7 +143,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Show a full-screen overlay with "Logging in..." message
   Widget _buildOverlay() {
     return _isLoading
         ? Positioned.fill(
@@ -136,8 +153,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CircularProgressIndicator(color: accentColor),
-                    SizedBox(height: 20),
-                    Text(
+                    const SizedBox(height: 20),
+                    const Text(
                       'Logging in...',
                       style: TextStyle(
                         fontSize: 18,
@@ -150,7 +167,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           )
-        : SizedBox.shrink();
+        : const SizedBox.shrink();
   }
 
   @override
@@ -182,6 +199,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       _buildForgotPasswordLink(),
                       const SizedBox(height: 10),
                       _buildLoginButton(),
+                      if (_showResendButton) // 👈 only shows after failed login
+                        TextButton(
+                          onPressed: _resendVerificationEmail,
+                          child: const Text("Resend Verification Email"),
+                        ),
                       const SizedBox(height: 20),
                       _buildSignUpLink(),
                     ],
@@ -196,7 +218,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // UI: Welcome text
   Widget _buildWelcomeText() {
     return Text(
       'Welcome to OtakuLink',
@@ -208,7 +229,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // UI: Email/Username input field
   Widget _buildEmailField() {
     return TextFormField(
       controller: _emailController,
@@ -226,7 +246,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // UI: Password input field
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passwordController,
@@ -237,7 +256,8 @@ class _LoginScreenState extends State<LoginScreen> {
         icon: Icons.lock,
         suffix: IconButton(
           icon: Icon(
-              _isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+          ),
           onPressed: () =>
               setState(() => _isPasswordVisible = !_isPasswordVisible),
         ),
@@ -245,14 +265,12 @@ class _LoginScreenState extends State<LoginScreen> {
       obscureText: !_isPasswordVisible,
       validator: (value) {
         if (value == null || value.isEmpty) return 'Please enter your password';
-        if (value.length < 6)
-          return 'Password must be at least 6 characters long';
+        if (value.length < 6) return 'Password must be at least 6 characters long';
         return null;
       },
     );
   }
 
-  // UI: Forgot password link
   Widget _buildForgotPasswordLink() {
     return Align(
       alignment: Alignment.centerRight,
@@ -267,7 +285,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // UI: Login button
   Widget _buildLoginButton() {
     return ElevatedButton(
       onPressed: _isLoading ? null : _login,
@@ -276,13 +293,17 @@ class _LoginScreenState extends State<LoginScreen> {
         padding: const EdgeInsets.symmetric(vertical: 15),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      child: const Text('Log In',
-          style: TextStyle(
-              fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
+      child: const Text(
+        'Log In',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+          fontSize: 16,
+        ),
+      ),
     );
   }
 
-  // UI: Sign-up link
   Widget _buildSignUpLink() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -300,7 +321,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Helper: Common input field decoration
   InputDecoration _inputDecoration(
       {required String label, required IconData icon, Widget? suffix}) {
     return InputDecoration(

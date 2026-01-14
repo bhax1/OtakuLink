@@ -23,7 +23,7 @@ class UserMangaPage extends StatefulWidget {
 class _UserMangaPageState extends State<UserMangaPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String currentUserId = '';
-  double _rating = 0;
+  int _rating = 0;
   bool _isFavorite = false;
   bool _isLoading = false;
   String _readingStatus = 'Not Yet';

@@ -1,13 +1,13 @@
-// profile_page.dart
 import 'dart:convert';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:otakulink/main.dart';
-import '../widgets_card/manga_card.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../widgets_card/viewmanga_card.dart';
 import '../widgets_profile/profile_widgets.dart';
+import '../main.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -19,9 +19,6 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  late Future<List<dynamic>> favoriteMangas;
-  late Future<List<dynamic>> topRateds;
-  late Future<List<dynamic>> allRateds;
 
   String? _currentUserId;
 
@@ -29,17 +26,27 @@ class _ProfilePageState extends State<ProfilePage> {
   int topRatedPage = 1;
   int allRatedPage = 1;
 
+  late Future<List<dynamic>> favoriteMangas;
+  late Future<List<dynamic>> topRateds;
+  late Future<List<dynamic>> allRateds;
+
   @override
   void initState() {
     super.initState();
     _currentUserId = _auth.currentUser?.uid;
+    _loadAllCategories();
+  }
+
+  void _loadAllCategories() {
     favoriteMangas = _fetchUserManga('favorites', favoritePage);
     topRateds = _fetchUserManga('toprated', topRatedPage);
     allRateds = _fetchUserManga('allrated', allRatedPage);
   }
 
-  Future<void> delayRequest() async {
-    await Future.delayed(Duration(seconds: 1));
+  Future<void> _refreshData() async {
+    setState(() {
+      _loadAllCategories();
+    });
   }
 
   Future<List<dynamic>> _fetchUserManga(String type, int page) async {
@@ -48,6 +55,7 @@ class _ProfilePageState extends State<ProfilePage> {
       List<String> mangaIds = [];
       QuerySnapshot userQuery;
 
+      // Fetch user manga IDs from Firestore
       if (type == 'favorites') {
         userQuery = await _firestore
             .collection('users')
@@ -55,7 +63,6 @@ class _ProfilePageState extends State<ProfilePage> {
             .collection('manga_ratings')
             .where('isFavorite', isEqualTo: true)
             .get();
-        mangaIds = userQuery.docs.map((doc) => doc.id).toList();
       } else if (type == 'toprated') {
         userQuery = await _firestore
             .collection('users')
@@ -63,108 +70,78 @@ class _ProfilePageState extends State<ProfilePage> {
             .collection('manga_ratings')
             .where('rating', isGreaterThanOrEqualTo: 9)
             .get();
-        mangaIds = userQuery.docs.map((doc) => doc.id).toList();
-      } else if (type == 'allrated') {
-        userQuery = await FirebaseFirestore.instance
+      } else {
+        userQuery = await _firestore
             .collection('users')
             .doc(_currentUserId)
             .collection('manga_ratings')
             .get();
-        mangaIds = userQuery.docs.map((doc) => doc.id).toList();
       }
+
+      mangaIds = userQuery.docs.map((doc) => doc.id).toList();
 
       int start = (page - 1) * itemsPerPage;
-      int end = start + itemsPerPage;
-
-      if (start >= mangaIds.length) {
-        return [];
-      }
+      if (start >= mangaIds.length) return [];
 
       List<String> currentPageIds = mangaIds.sublist(
         start,
-        end > mangaIds.length ? mangaIds.length : end,
+        (start + itemsPerPage) > mangaIds.length
+            ? mangaIds.length
+            : start + itemsPerPage,
       );
 
       List<dynamic> mangaList = [];
 
-      for (String mangaId in currentPageIds) {
-        final url = 'https://api.jikan.moe/v4/manga/$mangaId';
-        bool success = false;
+      var cacheBox = await Hive.openBox('userMangaCache');
 
-        while (!success) {
+      for (String id in currentPageIds) {
+        final cacheKey = 'manga_$id';
+        final cachedData = cacheBox.get(cacheKey);
+
+        if (cachedData != null) {
+          mangaList.add(Map<String, dynamic>.from(json.decode(cachedData)));
+          continue;
+        }
+
+        // Fetch from API with retry
+        int retries = 0;
+        while (retries < 3) {
           try {
-            final response = await http.get(Uri.parse(url));
-
-            if (response.statusCode == 429) {
-              await delayRequest();
-              continue;
-            }
+            final response = await http
+                .get(Uri.parse('https://api.jikan.moe/v4/manga/$id'));
 
             if (response.statusCode == 200) {
-              var data = json.decode(response.body)['data'];
-              mangaList.add({
+              final data = json.decode(response.body)['data'];
+              final mangaData = {
                 'title': data['title'] ?? 'Unknown Title',
                 'images': data['images'],
                 'mal_id': data['mal_id'],
-              });
-              success = true;
+              };
+
+              // Cache it
+              await cacheBox.put(cacheKey, json.encode(mangaData));
+              mangaList.add(mangaData);
+              break;
+            } else if (response.statusCode == 429) {
+              await Future.delayed(Duration(seconds: 1 + retries));
+              retries++;
             } else {
               break;
             }
-          } catch (e) {
-            break;
+          } catch (_) {
+            retries++;
           }
         }
       }
 
       return mangaList;
-    } catch (error) {
+    } catch (_) {
       return [];
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: RefreshIndicator(
-        color: backgroundColor,
-        backgroundColor: primaryColor,
-        onRefresh: _refreshData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              children: [
-                UserHeader(auth: _auth),
-                Column(
-                  children: [
-                    buildCategory('Favorites', favoriteMangas, 'favorites'),
-                    const SizedBox(height: 20),
-                    buildCategory('Top Rated', topRateds, 'toprated'),
-                    const SizedBox(height: 20),
-                    buildCategory('All Rated', allRateds, 'allrated'),
-                    const SizedBox(height: 20),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _refreshData() async {
-    setState(() {
-      favoriteMangas = _fetchUserManga('favorites', favoritePage);
-      topRateds = _fetchUserManga('toprated', topRatedPage);
-      allRateds = _fetchUserManga('allrated', allRatedPage);
-    });
-  }
-
-  Widget buildCategory(
-      String title, Future<List<dynamic>> data, String categoryType) {
+  Widget _buildCategory(String title, Future<List<dynamic>> data, String type,
+      int currentPage, Function(int) onPageChange) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -181,45 +158,43 @@ class _ProfilePageState extends State<ProfilePage> {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return _buildPlaceholderRow();
             } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return _buildEmptyCategoryMessage(categoryType);
+              return SizedBox(
+                height: 240,
+                child: Center(
+                  child: Text(
+                    type == 'favorites'
+                        ? "No favorites yet."
+                        : type == 'toprated'
+                            ? "No top rated yet."
+                            : "No ratings yet.",
+                    style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic),
+                  ),
+                ),
+              );
             } else if (snapshot.hasError) {
-              return _buildErrorRow();
+              return _buildErrorRow(type);
             } else {
-              return _buildMangaList(snapshot.data!);
+              return Column(
+                children: [
+                  _buildMangaList(snapshot.data!),
+                  _buildPagination(snapshot.data!, currentPage, onPageChange),
+                ],
+              );
             }
           },
         ),
-        buildPaginationButtons(categoryType),
       ],
-    );
-  }
-
-  Widget _buildEmptyCategoryMessage(String categoryType) {
-    String message = categoryType == 'favorites'
-        ? "No favorites yet."
-        : categoryType == 'toprated'
-            ? "No top rated yet."
-            : "No ratings yet.";
-    return SizedBox(
-      height: 240,
-      child: Center(
-        child: Text(
-          message,
-          style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic),
-        ),
-      ),
     );
   }
 
   Widget _buildMangaList(List<dynamic> data) {
     return SizedBox(
-      height: 240,
+      height: 270,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: data.length > 5 ? 5 : data.length,
+        itemCount: data.length,
         itemBuilder: (context, index) {
-          var manga = data[index];
-          return MangaCard(manga: manga, userId: _currentUserId);
+          return MangaCard(manga: data[index], userId: _currentUserId);
         },
       ),
     );
@@ -231,12 +206,12 @@ class _ProfilePageState extends State<ProfilePage> {
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: 5,
-        itemBuilder: (context, index) => const MangaCard(isPlaceholder: true),
+        itemBuilder: (_, __) => const MangaCard(isPlaceholder: true),
       ),
     );
   }
 
-  Widget _buildErrorRow() {
+  Widget _buildErrorRow(String type) {
     return SizedBox(
       height: 240,
       child: Center(
@@ -245,11 +220,9 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Icon(Icons.error, color: Colors.red),
             const SizedBox(height: 10),
-            Text('Failed to load data'),
+            Text('Failed to load $type'),
             ElevatedButton(
-              onPressed: () {
-                setState(() {});
-              },
+              onPressed: () => setState(() {}),
               child: Text('Retry'),
             ),
           ],
@@ -258,59 +231,75 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget buildPaginationButtons(String categoryType) {
-    int currentPage = (categoryType == 'favorites')
-        ? favoritePage
-        : (categoryType == 'toprated')
-            ? topRatedPage
-            : allRatedPage;
+  Widget _buildPagination(
+      List<dynamic> data, int currentPage, Function(int) onPageChange) {
+    bool canNext = data.length == 5;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
+        ),
+        Text('Page $currentPage'),
+        IconButton(
+          icon: const Icon(Icons.arrow_forward),
+          onPressed: canNext ? () => onPageChange(currentPage + 1) : null,
+        ),
+      ],
+    );
+  }
 
-    Future<List<dynamic>> dataToCheck = (categoryType == 'favorites')
-        ? favoriteMangas
-        : (categoryType == 'toprated')
-            ? topRateds
-            : allRateds;
-
-    Function onPageChange = (int newPage) {
-      setState(() {
-        if (categoryType == 'favorites') {
-          favoritePage = newPage;
-          favoriteMangas = _fetchUserManga('favorites', favoritePage);
-        } else if (categoryType == 'toprated') {
-          topRatedPage = newPage;
-          topRateds = _fetchUserManga('toprated', topRatedPage);
-        } else if (categoryType == 'allrated') {
-          allRatedPage = newPage;
-          allRateds = _fetchUserManga('allrated', allRatedPage);
-        }
-      });
-    };
-
-    return FutureBuilder<List<dynamic>>(
-      future: dataToCheck,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
-        }
-        bool canGoToNextPage = snapshot.hasData && snapshot.data!.length == 5;
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed:
-                  currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
-            ),
-            Text('Page $currentPage'),
-            IconButton(
-              icon: const Icon(Icons.arrow_forward),
-              onPressed:
-                  canGoToNextPage ? () => onPageChange(currentPage + 1) : null,
-            ),
-          ],
-        );
-      },
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: RefreshIndicator(
+        color: backgroundColor,
+        backgroundColor: primaryColor,
+        onRefresh: _refreshData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              UserHeader(auth: _auth),
+              const SizedBox(height: 20),
+              _buildCategory(
+                'Favorites',
+                favoriteMangas,
+                'favorites',
+                favoritePage,
+                (newPage) => setState(() {
+                  favoritePage = newPage;
+                  favoriteMangas = _fetchUserManga('favorites', favoritePage);
+                }),
+              ),
+              const SizedBox(height: 20),
+              _buildCategory(
+                'Top Rated',
+                topRateds,
+                'toprated',
+                topRatedPage,
+                (newPage) => setState(() {
+                  topRatedPage = newPage;
+                  topRateds = _fetchUserManga('toprated', topRatedPage);
+                }),
+              ),
+              const SizedBox(height: 20),
+              _buildCategory(
+                'All Rated',
+                allRateds,
+                'allrated',
+                allRatedPage,
+                (newPage) => setState(() {
+                  allRatedPage = newPage;
+                  allRateds = _fetchUserManga('allrated', allRatedPage);
+                }),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
