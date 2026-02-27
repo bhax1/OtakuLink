@@ -1,120 +1,110 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:otakulink/pages/home/see_more_page.dart';
-import 'package:otakulink/theme.dart';
-import '../../providers/home_providers.dart';
+import 'package:otakulink/core/providers/home_providers.dart';
+import 'package:otakulink/pages/manga/see_more_page.dart';
+
+import 'package:otakulink/core/api/anilist_service.dart';
+
 import 'home_page_widgets/hero_carousel.dart';
-import 'home_page_widgets/section_header.dart';
-import 'home_page_widgets/horizontal_async_list.dart';
-import 'home_page_widgets/personalized_section.dart';
+import 'home_page_widgets/home_section_smart.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watchers
-    final carouselAsync = ref.watch(trendingMangaProvider(false));
-    final newAsync = ref.watch(newReleasesProvider(false));
-    final trendingListAsync = ref.watch(trendingListProvider(false));
-    final hallOfFameAsync = ref.watch(hallOfFameProvider(false));
-    final favoritesAsync = ref.watch(fanFavoritesProvider(false));
-    final manhwaAsync = ref.watch(manhwaProvider(false));
-    final personalizedAsync = ref.watch(personalizedProvider);
+    final carouselAsync = ref.watch(trendingMangaProvider);
+
+    final List<_SectionConfig> sections = [
+      _SectionConfig('Fresh This Season', Icons.calendar_month_outlined,
+          Colors.blue, CategoryType.newReleases, newReleasesProvider),
+      _SectionConfig('Trending Now', Icons.local_fire_department, Colors.orange,
+          CategoryType.trending, trendingListProvider),
+      _SectionConfig('Top Manhwa', Icons.show_chart, Colors.redAccent,
+          CategoryType.manhwa, manhwaProvider),
+      _SectionConfig('Hall of Fame', Icons.emoji_events, Colors.amber,
+          CategoryType.hallOfFame, hallOfFameProvider),
+      _SectionConfig('All-Time Favorites', Icons.favorite, Colors.pinkAccent,
+          CategoryType.favorites, fanFavoritesProvider),
+    ];
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: RefreshIndicator(
-        backgroundColor: Colors.white,
-        color: AppColors.accent,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        color: Theme.of(context).colorScheme.secondary,
         strokeWidth: 3.0,
         displacement: 40.0,
         onRefresh: () async {
           try {
-            await Future.wait([
-              ref.refresh(trendingMangaProvider(true).future),
-              ref.refresh(newReleasesProvider(true).future),
-              ref.refresh(trendingListProvider(true).future),
-              ref.refresh(hallOfFameProvider(true).future),
-              ref.refresh(fanFavoritesProvider(true).future),
-              ref.refresh(manhwaProvider(true).future),
-              ref.refresh(personalizedProvider.future),
+            await AniListService.invalidateSpecificCaches([
+              'anilist_trending_carousel',
+              'anilist_new_season',
+              'anilist_trending_list',
+              'anilist_hall_of_fame',
+              'anilist_fan_favorites',
+              'anilist_manhwa',
             ]);
+
+            final List<Future<dynamic>> refreshFutures = [
+              ref.refresh(trendingMangaProvider.future),
+              ...sections.map((s) => ref.refresh(s.provider.future)),
+            ];
+
+            await Future.wait(refreshFutures).timeout(
+              const Duration(seconds: 15),
+              onTimeout: () {
+                debugPrint("Refresh timed out: Ending spinner for UX.");
+                return [];
+              },
+            );
           } catch (e) {
             debugPrint("Refresh error: $e");
           }
         },
-        child: SingleChildScrollView(
+        child: ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              // 1. CAROUSEL
-              HeroCarousel(asyncData: carouselAsync),
+          itemCount: sections.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Column(
+                children: [
+                  HeroCarousel(asyncData: carouselAsync),
+                  const SizedBox(height: 40),
+                ],
+              );
+            }
 
-              const SizedBox(height: 20),
-
-              // 2. PERSONALIZED SECTION
-              PersonalizedSection(asyncData: personalizedAsync),
-              SectionHeader(
-                title: 'Fresh This Season', 
-              icon: Icons.calendar_month_outlined, 
-              color: Colors.blue,
-              onSeeMore: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const SeeMorePage(title: 'Fresh This Season', category: CategoryType.newReleases)
-              )),
-              ),
-              HorizontalAsyncList(asyncData: newAsync),
-              const SizedBox(height: 20),
-
-              SectionHeader(
-                title: 'Trending Now', 
-              icon: Icons.local_fire_department, 
-              color: Colors.orange,
-              onSeeMore: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const SeeMorePage(title: 'Trending Now', category: CategoryType.trending)
-              )),
-              ),
-              HorizontalAsyncList(asyncData: trendingListAsync),
-              const SizedBox(height: 20),
-
-              SectionHeader(
-                title: 'Top Manhwa', 
-              icon: Icons.show_chart, 
-              color: Colors.redAccent,
-              onSeeMore: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const SeeMorePage(title: 'Top Manhwa', category: CategoryType.manhwa)
-              )),
-              ),
-              HorizontalAsyncList(asyncData: manhwaAsync),
-              const SizedBox(height: 20),
-
-              SectionHeader(
-                title: 'Hall of Fame (9.0+)', 
-              icon: Icons.emoji_events, 
-              color: Colors.amber,
-              onSeeMore: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const SeeMorePage(title: 'Hall of Fame', category: CategoryType.hallOfFame)
-              )),
-              ),
-              HorizontalAsyncList(asyncData: hallOfFameAsync),
-              const SizedBox(height: 20),
-
-              SectionHeader(
-                title: 'All-Time Favorites', 
-              icon: Icons.favorite, 
-              color: Colors.pinkAccent,
-              onSeeMore: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const SeeMorePage(title: 'All-Time Favorites', category: CategoryType.favorites)
-              )),
-              ),
-              HorizontalAsyncList(asyncData: favoritesAsync),
-              const SizedBox(height: 20),
-
-              
-            ],
-          ),
+            final section = sections[index - 1];
+            return HomeSectionSmart(
+              title: section.title,
+              icon: section.icon,
+              color: section.color,
+              category: section.category,
+              provider: section.provider,
+            );
+          },
         ),
       ),
     );
   }
+}
+
+/// Configuration class for Home Sections
+class _SectionConfig {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final CategoryType category;
+
+  /// Removed the Function(bool) wrapper. Now it just holds the Provider reference.
+  final FutureProvider<List<dynamic>> provider;
+
+  _SectionConfig(
+    this.title,
+    this.icon,
+    this.color,
+    this.category,
+    this.provider,
+  );
 }

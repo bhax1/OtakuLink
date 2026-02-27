@@ -54,6 +54,11 @@ dependencies:
   safe_device: ^1.3.8
   google_fonts: ^8.0.1
   wakelock_plus: ^1.4.0
+  html_unescape: ^2.0.0
+  shimmer: ^3.0.0
+  go_router: ^17.1.0
+  ntp: ^2.0.0
+  flutter_rating_bar: ^4.0.1
 
 dev_dependencies:
   flutter_test:
@@ -99,11 +104,14 @@ flutter:
     - assets/logo/logo_flat2.png
     - assets/logo/logo_flat_white.png
     - assets/logo/logo_flat_accent.png
+    - assets/logo/logo_circle.png
     - assets/background/bg_fp.png
     - assets/gif/signup.gif
     - assets/gif/loading.gif
     - assets/pic/sorry.png
     - assets/pic/default_avatar.png
+
+    - assets/images/anime_girl_angry.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -116,7 +124,13 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
-  # fonts:
+fonts:
+  - family: Yomogi
+    fonts:
+      - asset: assets/fonts/Yomogi-Regular.ttf
+      - asset: assets/fonts/Yomogi-Bold.ttf
+        weight: 700
+
   #   - family: Schyler
   #     fonts:
   #       - asset: fonts/Schyler-Regular.ttf

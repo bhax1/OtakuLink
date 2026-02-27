@@ -4,14 +4,14 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color color;
-  final VoidCallback? onSeeMore; // <--- Added
+  final VoidCallback? onSeeMore;
 
   const SectionHeader({
     super.key,
     required this.title,
     required this.icon,
     required this.color,
-    this.onSeeMore, // <--- Added
+    this.onSeeMore,
   });
 
   @override

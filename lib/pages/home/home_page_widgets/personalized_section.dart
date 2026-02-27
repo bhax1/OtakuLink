@@ -12,7 +12,6 @@ class PersonalizedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return asyncData.when(
       data: (data) {
-        // If no data or null, show nothing (don't take up space)
         if (data == null) return const SizedBox.shrink();
 
         return Column(

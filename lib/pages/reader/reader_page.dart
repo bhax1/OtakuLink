@@ -1,21 +1,31 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:otakulink/services/mangadex_service.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:otakulink/pages/reader/providers/reader_state.dart';
 import 'package:otakulink/services/reading_history_service.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; 
+import 'package:wakelock_plus/wakelock_plus.dart';
 
-enum ReadingMode { vertical, horizontalLTR, horizontalRTL }
+import 'providers/reading_mode_provider.dart';
+import 'providers/reader_controller.dart';
+import 'physics/webtoon_scroll_physics.dart';
+import 'widgets/chapter_list_sheet.dart';
+import 'widgets/reader_top_bar.dart';
+import 'widgets/reader_bottom_bar.dart';
+import 'widgets/reading_modes_modal.dart';
+import 'widgets/volume_navigation_wrapper.dart';
+import 'widgets/reader_image_item.dart';
 
-class ReaderPage extends StatefulWidget {
+class ReaderPage extends ConsumerStatefulWidget {
   final int initialChapterIndex;
-  final List<Map<String, dynamic>> allChapters; 
+  final List<Map<String, dynamic>> allChapters;
   final String mangaId;
   final String mangaTitle;
   final String mangaCover;
 
   const ReaderPage({
-    super.key, 
-    required this.initialChapterIndex, 
+    super.key,
+    required this.initialChapterIndex,
     required this.allChapters,
     required this.mangaId,
     required this.mangaTitle,
@@ -23,319 +33,370 @@ class ReaderPage extends StatefulWidget {
   });
 
   @override
-  State<ReaderPage> createState() => _ReaderPageState();
+  ConsumerState<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> {
-  late int _currentIndex;
-  late Future<List<String>> _pagesFuture;
-  
-  ReadingMode _mode = ReadingMode.vertical;
+class _ReaderPageState extends ConsumerState<ReaderPage> {
+  // State variables kept local to the UI
+  int _currentPageIndex = 0;
   bool _hideUI = false;
+  bool _isZoomedIn = false;
+
+  // Controllers
+  late PageController _pageController;
+  late ScrollController _scrollController;
+  late FocusNode _focusNode;
+
+  final ValueNotifier<double> _progressNotifier = ValueNotifier(0.0);
+  Timer? _debounceTimer;
+
+  // Cache settings recovery
+  late final int _originalCacheSize;
+  late final int _originalCacheSizeBytes;
 
   @override
   void initState() {
     super.initState();
-    WakelockPlus.enable(); // Keep screen on
-    _currentIndex = widget.initialChapterIndex;
-    _loadChapter(_currentIndex);
+    _initServices();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(readerControllerProvider.notifier).init(
+            initialIndex: widget.initialChapterIndex,
+            allChapters: widget.allChapters,
+            mangaId: widget.mangaId,
+            mangaTitle: widget.mangaTitle,
+            mangaCover: widget.mangaCover,
+          );
+    });
+  }
+
+  void _initServices() {
+    WakelockPlus.enable();
+    _focusNode = FocusNode();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    _originalCacheSize = PaintingBinding.instance.imageCache.maximumSize;
+    _originalCacheSizeBytes =
+        PaintingBinding.instance.imageCache.maximumSizeBytes;
+    PaintingBinding.instance.imageCache.maximumSize = 40;
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 1024 * 1024 * 60;
+
+    _pageController = PageController();
+    _scrollController = ScrollController();
   }
 
   @override
   void dispose() {
-    WakelockPlus.disable();
+    _cleanupServices();
     super.dispose();
   }
 
-  void _loadChapter(int index) {
-    setState(() {
-      _currentIndex = index;
-      final chapterData = widget.allChapters[index];
-      final chapterId = chapterData['id'].toString();
-      final chapterNum = chapterData['chapter'].toString();
+  void _cleanupServices() {
+    _pageController.dispose();
+    _scrollController.dispose();
+    _progressNotifier.dispose();
+    _debounceTimer?.cancel();
+    _focusNode.dispose();
 
-      ReadingHistoryService.markAsRead(
-        chapterId: chapterId,
-        mangaId: widget.mangaId,
-        mangaTitle: widget.mangaTitle,
-        coverUrl: widget.mangaCover,
-        chapterNum: chapterNum,
+    WakelockPlus.disable();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    PaintingBinding.instance.imageCache.maximumSize = _originalCacheSize;
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        _originalCacheSizeBytes;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  void _toggleUI() {
+    setState(() => _hideUI = !_hideUI);
+    SystemChrome.setEnabledSystemUIMode(
+      _hideUI ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+  }
+
+  void _handleScrollForward() {
+    final currentMode = ref.read(readingModeProvider);
+
+    if (currentMode == ReadingMode.vertical) {
+      if (!_scrollController.hasClients) return;
+      final scrollAmount = MediaQuery.of(context).size.height * 0.8;
+      _scrollController.animateTo(
+        (_scrollController.offset + scrollAmount)
+            .clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
       );
-
-      _pagesFuture = MangaDexService.getChapterPages(chapterId);
-    });
+    } else {
+      if (_pageController.hasClients) {
+        _pageController.nextPage(
+            duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      }
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final currentChapter = widget.allChapters[_currentIndex];
+  void _handleScrollBackward() {
+    final currentMode = ref.read(readingModeProvider);
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 1. CONTENT LAYER
-          GestureDetector(
-            onTap: () => setState(() => _hideUI = !_hideUI),
-            child: FutureBuilder<List<String>>(
-              future: _pagesFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.white));
-                }
-                if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, color: Colors.white, size: 40),
-                        const SizedBox(height: 10),
-                        const Text("Error loading pages.", style: TextStyle(color: Colors.white)),
-                        TextButton(
-                          onPressed: () => _loadChapter(_currentIndex),
-                          child: const Text("Retry"),
-                        )
-                      ],
-                    )
-                  );
-                }
-
-                final pages = snapshot.data!;
-                
-                if (_mode == ReadingMode.vertical) {
-                  return _buildVerticalList(pages);
-                } else {
-                  return _buildPageView(pages);
-                }
-              },
-            ),
-          ),
-
-          // 2. TOP BAR
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            top: _hideUI ? -100 : 0,
-            left: 0, right: 0,
-            child: Container(
-              color: Colors.black.withOpacity(0.9),
-              padding: EdgeInsets.fromLTRB(10, MediaQuery.of(context).padding.top, 10, 10),
-              child: Row(
-                children: [
-                  const BackButton(color: Colors.white),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Chapter ${currentChapter['chapter']}",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          currentChapter['title'] ?? '',
-                          style: const TextStyle(color: Colors.grey, fontSize: 12),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.settings, color: Colors.white),
-                    onPressed: _showSettingsModal,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. BOTTOM BAR
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            bottom: _hideUI ? -120 : 0,
-            left: 0, right: 0,
-            child: Container(
-              color: Colors.black.withOpacity(0.9),
-              padding: const EdgeInsets.all(16),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.skip_previous, color: Colors.white),
-                      onPressed: _currentIndex > 0 
-                          ? () => _loadChapter(_currentIndex - 1) 
-                          : null,
-                    ),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.list),
-                      label: const Text("Chapters"),
-                      onPressed: _showChapterListModal,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[800],
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.skip_next, color: Colors.white),
-                      onPressed: _currentIndex < widget.allChapters.length - 1 
-                          ? () => _loadChapter(_currentIndex + 1) 
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    if (currentMode == ReadingMode.vertical) {
+      if (!_scrollController.hasClients) return;
+      final scrollAmount = MediaQuery.of(context).size.height * 0.8;
+      _scrollController.animateTo(
+        (_scrollController.offset - scrollAmount)
+            .clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    } else {
+      if (_pageController.hasClients) {
+        _pageController.previousPage(
+            duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      }
+    }
   }
 
-  Widget _buildVerticalList(List<String> pages) {
-    return ListView.builder(
-      itemCount: pages.length,
-      cacheExtent: 5000, // Preload lots of pages
-      itemBuilder: (context, index) => _buildImage(pages[index]),
-    );
-  }
+  void _handleScreenTap(TapUpDetails details) {
+    final currentMode = ref.read(readingModeProvider);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final tapX = details.globalPosition.dx;
+    final edgeMargin = screenWidth * 0.30;
 
-  Widget _buildPageView(List<String> pages) {
-    return PageView.builder(
-      reverse: _mode == ReadingMode.horizontalRTL, 
-      itemCount: pages.length,
-      itemBuilder: (context, index) => Center(child: _buildImage(pages[index])),
-    );
-  }
+    if (currentMode == ReadingMode.vertical) {
+      _toggleUI();
+      return;
+    }
 
-  Widget _buildImage(String url) {
-    return CachedNetworkImage(
-      imageUrl: url,
-      httpHeaders: const {'User-Agent': 'OtakuLink/1.0 (dev@otakulink.app)'},
-      fit: BoxFit.fitWidth,
-      placeholder: (context, url) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.6,
-        child: Center(child: CircularProgressIndicator(color: Colors.grey[800]))
-      ),
-      errorWidget: (context, url, error) => const SizedBox(
-        height: 300, 
-        child: Center(child: Icon(Icons.broken_image, color: Colors.grey))
-      ),
-    );
+    if (tapX < edgeMargin) {
+      currentMode == ReadingMode.horizontalLTR
+          ? _handleScrollBackward()
+          : _handleScrollForward();
+    } else if (tapX > screenWidth - edgeMargin) {
+      currentMode == ReadingMode.horizontalLTR
+          ? _handleScrollForward()
+          : _handleScrollBackward();
+    } else {
+      _toggleUI();
+    }
   }
 
   void _showSettingsModal() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text("Reading Mode", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
-                  _buildSettingOption(
-                    title: "Long Strip (Webtoon)",
-                    icon: Icons.view_day,
-                    isSelected: _mode == ReadingMode.vertical,
-                    onTap: () {
-                      setModalState(() => _mode = ReadingMode.vertical);
-                      setState(() {});
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildSettingOption(
-                    title: "Left to Right (Comic)",
-                    icon: Icons.arrow_forward,
-                    isSelected: _mode == ReadingMode.horizontalLTR,
-                    onTap: () {
-                      setModalState(() => _mode = ReadingMode.horizontalLTR);
-                      setState(() {});
-                      Navigator.pop(context);
-                    },
-                  ),
-                  _buildSettingOption(
-                    title: "Right to Left (Manga)",
-                    icon: Icons.arrow_back,
-                    isSelected: _mode == ReadingMode.horizontalRTL,
-                    onTap: () {
-                      setModalState(() => _mode = ReadingMode.horizontalRTL);
-                      setState(() {});
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-            );
-          }
-        );
-      },
+      builder: (_) => const ReadingModesModal(),
     );
   }
 
-  void _showChapterListModal() {
+  void _showChapterListModal(int currentIndex) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.grey[900],
       isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (_, controller) => Column(
-          children: [
-             const Padding(
-               padding: EdgeInsets.all(16.0),
-               child: Text("Select Chapter", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-             ),
-             Expanded(
-               child: ListView.separated(
-                 controller: controller,
-                 itemCount: widget.allChapters.length,
-                 separatorBuilder: (_,__) => const Divider(color: Colors.white24, height: 1),
-                 itemBuilder: (context, index) {
-                   final ch = widget.allChapters[index];
-                   final isSelected = index == _currentIndex;
-                   final isRead = ReadingHistoryService.isRead(ch['id'].toString());
+      builder: (context) => ChapterListSheet(
+        chapters: widget.allChapters,
+        currentIndex: currentIndex,
+        onChapterTap: (index) {
+          Navigator.pop(context);
+          ref.read(readerControllerProvider.notifier).loadChapter(index);
+        },
+      ),
+    );
+  }
 
-                   return ListTile(
-                     title: Text(
-                       "Chapter ${ch['chapter']}", 
-                        style: TextStyle(
-                          // Current: Orange, Read: Grey, Unread: White
-                          color: isSelected ? Colors.orange : (isRead ? Colors.grey : Colors.white), 
-                          fontWeight: FontWeight.bold
-                        )
-                     ),
-                     subtitle: Text(
-                       ch['title'] ?? '', 
-                       style: TextStyle(color: isRead ? Colors.grey[700] : Colors.grey[400], fontSize: 12)
-                     ),
-                     trailing: isSelected ? const Icon(Icons.check, color: Colors.orange) : null,
-                     onTap: () {
-                       Navigator.pop(context); 
-                       _loadChapter(index); 
-                     },
-                   );
-                 },
-               ),
-             ),
-          ],
+  Widget _buildVerticalList(List<String> pages) {
+    // Removed the PostFrameCallback jump logic from here
+    return InteractiveViewer(
+      minScale: 1.0,
+      maxScale: 4.0,
+      panAxis: PanAxis.horizontal,
+      panEnabled: true,
+      scaleEnabled: true,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (ScrollNotification scrollInfo) {
+          final pixels = scrollInfo.metrics.pixels;
+          final maxScroll = scrollInfo.metrics.maxScrollExtent;
+
+          if (maxScroll > 0) {
+            _progressNotifier.value = (pixels / maxScroll).clamp(0.0, 1.0);
+          }
+
+          if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+          _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+            final currentState = ref.read(readerControllerProvider);
+            final chapterId =
+                widget.allChapters[currentState.currentIndex]['id'].toString();
+            ref
+                .read(readingHistoryServiceProvider)
+                .saveVerticalProgress(chapterId, pixels);
+          });
+
+          return false;
+        },
+        child: ListView.builder(
+          controller: _scrollController,
+          physics: const WebtoonScrollPhysics(),
+          itemCount: pages.length,
+          cacheExtent: 1500.0,
+          itemBuilder: (context, index) => ReaderImageItem(
+            imageUrl: pages[index],
+            mode: ReadingMode.vertical,
+            onTapUp: _handleScreenTap,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSettingOption({required String title, required IconData icon, required bool isSelected, required VoidCallback onTap}) {
-    return ListTile(
-      leading: Icon(icon, color: isSelected ? Colors.orange : Colors.white),
-      title: Text(title, style: TextStyle(color: isSelected ? Colors.orange : Colors.white)),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.orange) : null,
-      onTap: onTap,
+  Widget _buildPageView(List<String> pages) {
+    final currentMode = ref.watch(readingModeProvider);
+    // Removed the PostFrameCallback jump logic from here
+
+    return PageView.builder(
+      controller: _pageController,
+      allowImplicitScrolling: true,
+      physics: _isZoomedIn
+          ? const NeverScrollableScrollPhysics()
+          : const PageScrollPhysics(),
+      reverse: currentMode == ReadingMode.horizontalRTL,
+      onPageChanged: (index) {
+        ref.read(readerControllerProvider.notifier).preloadNextPages(index);
+        setState(() => _currentPageIndex = index);
+
+        final currentState = ref.read(readerControllerProvider);
+        final chapterId =
+            widget.allChapters[currentState.currentIndex]['id'].toString();
+        ref
+            .read(readingHistoryServiceProvider)
+            .savePageProgress(chapterId, index);
+      },
+      itemCount: pages.length,
+      itemBuilder: (context, index) => Center(
+        child: ReaderImageItem(
+          imageUrl: pages[index],
+          mode: currentMode,
+          onTapUp: _handleScreenTap,
+          onZoomChanged: (isZoomed) {
+            setState(() => _isZoomedIn = isZoomed);
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final readerState = ref.watch(readerControllerProvider);
+    final currentMode = ref.watch(readingModeProvider);
+    final currentChapter = widget.allChapters[readerState.currentIndex];
+
+    // NEW: Listen for when pages are loaded so we can jump exactly ONCE per chapter
+    ref.listen<ReaderState>(readerControllerProvider, (previous, next) {
+      final wasLoading = previous?.pages.isLoading ?? true;
+      final isLoaded = next.pages.hasValue && !next.pages.isLoading;
+      final chapterChanged = previous?.currentIndex != next.currentIndex;
+
+      if ((wasLoading && isLoaded) || (chapterChanged && isLoaded)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Handle Horizontal Jump
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(next.savedHorizontalPage);
+            if (mounted) {
+              setState(() => _currentPageIndex = next.savedHorizontalPage);
+            }
+          }
+          // Handle Vertical Jump
+          if (_scrollController.hasClients && next.savedVerticalPixels > 0) {
+            _scrollController.jumpTo(next.savedVerticalPixels);
+          }
+        });
+      }
+    });
+
+    return VolumeNavigationWrapper(
+      focusNode: _focusNode,
+      onVolumeDown: _handleScrollForward,
+      onVolumeUp: _handleScrollBackward,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // 1. Content Layer
+            readerState.pages.when(
+              loading: () => const Center(
+                  child: CircularProgressIndicator(color: Colors.white)),
+              error: (err, stack) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: Colors.white, size: 40),
+                    const SizedBox(height: 10),
+                    const Text("Error loading pages.",
+                        style: TextStyle(color: Colors.white)),
+                    TextButton(
+                      onPressed: () => ref
+                          .read(readerControllerProvider.notifier)
+                          .loadChapter(readerState.currentIndex),
+                      child: const Text("Retry"),
+                    )
+                  ],
+                ),
+              ),
+              data: (pages) {
+                if (pages.isEmpty) {
+                  return const Center(
+                      child: Text("No pages found.",
+                          style: TextStyle(color: Colors.white)));
+                }
+                // Notice we no longer pass the initialScroll/initialPage here
+                return currentMode == ReadingMode.vertical
+                    ? _buildVerticalList(pages)
+                    : _buildPageView(pages);
+              },
+            ),
+
+            // 2. Top Bar
+            ReaderTopBar(
+              isHidden: _hideUI,
+              chapterName: currentChapter['chapter']?.toString() ?? 'Oneshot',
+              chapterTitle: currentChapter['title'] ?? '',
+              onSettingsTap: _showSettingsModal,
+            ),
+
+            // 3. Bottom Bar
+            readerState.pages.maybeWhen(
+              data: (pages) => ReaderBottomBar(
+                isHidden: _hideUI,
+                totalPages: pages.length,
+                currentPageIndex: _currentPageIndex,
+                progressNotifier: _progressNotifier,
+                currentMode: currentMode,
+                hasPreviousChapter: readerState.currentIndex > 0,
+                hasNextChapter:
+                    readerState.currentIndex < widget.allChapters.length - 1,
+                onPreviousChapter: () => ref
+                    .read(readerControllerProvider.notifier)
+                    .loadChapter(readerState.currentIndex - 1),
+                onNextChapter: () => ref
+                    .read(readerControllerProvider.notifier)
+                    .loadChapter(readerState.currentIndex + 1),
+                onShowChapterList: () =>
+                    _showChapterListModal(readerState.currentIndex),
+                onSliderChanged: (val) {
+                  if (currentMode == ReadingMode.vertical) {
+                    if (_scrollController.hasClients) {
+                      final max = _scrollController.position.maxScrollExtent;
+                      _scrollController.jumpTo(val * max);
+                    }
+                  } else {
+                    _pageController.jumpToPage(val.toInt());
+                  }
+                },
+              ),
+              orElse: () => const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

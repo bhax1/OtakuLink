@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:otakulink/pages/feed/feed_services/news_service.dart';
+import 'package:otakulink/core/api/news_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class NewsRail extends StatelessWidget {

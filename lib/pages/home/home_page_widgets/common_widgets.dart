@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:otakulink/pages/home/manga_widgets/manga_card.dart';
+import 'package:otakulink/pages/manga/manga_widgets/manga_card.dart';
 
 // --- A Reusable Header ---
 class SectionHeader extends StatelessWidget {

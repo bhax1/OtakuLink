@@ -1,19 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class NotificationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
-  /// General method to send a notification
   Future<void> sendNotification({
     required String currentUserId,
     required String targetUserId,
     required String type,
-    required String senderName,
-    required String? senderPhoto,
     required String message,
-
     int? mangaId,
     String? mangaName,
     String? commentId,
@@ -25,33 +21,42 @@ class NotificationService {
       final data = {
         'type': type,
         'senderId': currentUserId,
-        'senderName': senderName,
-        'senderPhoto': senderPhoto,
         'message': message,
         'isRead': false,
         'timestamp': FieldValue.serverTimestamp(),
-        // Add optional fields only if they exist
         if (mangaId != null) 'mangaId': mangaId,
         if (mangaName != null) 'mangaName': mangaName,
         if (commentId != null) 'commentId': commentId,
         if (reactionEmoji != null) 'reactionEmoji': reactionEmoji,
       };
 
-      await _firestore
+      final batch = _firestore.batch();
+      final notifRef = _firestore
           .collection('users')
           .doc(targetUserId)
           .collection('notification')
-          .add(data);
+          .doc();
+
+      final metaRef = _firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('meta')
+          .doc('notifications');
+
+      batch.set(notifRef, data);
+      batch.set(metaRef, {'unreadCount': FieldValue.increment(1)},
+          SetOptions(merge: true));
+
+      await batch.commit();
     } catch (e) {
-      print("Error sending notification: $e");
+      debugPrint("Error sending notification: $e");
     }
   }
 
   Future<void> processMentions({
     required String text,
-    required String senderName,
     required String senderId,
-    required String? senderPhoto,
+    required String currentUserName,
     required int mangaId,
     required String mangaName,
     required String commentId,
@@ -63,79 +68,119 @@ class NotificationService {
 
     final Set<String> mentionedNames = matches.map((m) => m.group(1)!).toSet();
 
-    for (String targetUserName in mentionedNames) {
-      // Avoid double notification if already replying to them directly
-      if (replyToUserName != null && targetUserName == replyToUserName) continue;
-      if (targetUserName == senderName) continue;
+    mentionedNames.remove(currentUserName);
+    if (replyToUserName != null) mentionedNames.remove(replyToUserName);
+
+    if (mentionedNames.isEmpty) return;
+
+    final namesList = mentionedNames.toList();
+
+    for (var i = 0; i < namesList.length; i += 10) {
+      final chunk = namesList.sublist(
+          i, i + 10 > namesList.length ? namesList.length : i + 10);
 
       final userQuery = await _firestore
           .collection('users')
-          .where('username', isEqualTo: targetUserName)
-          .limit(1)
+          .where('username', whereIn: chunk)
           .get();
 
-      if (userQuery.docs.isNotEmpty) {
-        final targetUserId = userQuery.docs.first.id;
-        await sendNotification(
+      for (var doc in userQuery.docs) {
+        sendNotification(
           currentUserId: senderId,
-          targetUserId: targetUserId,
+          targetUserId: doc.id,
           type: 'mention',
-          senderName: senderName,
-          senderPhoto: senderPhoto,
           mangaId: mangaId,
           mangaName: mangaName,
           commentId: commentId,
           message: 'mentioned you in $mangaName',
-        );
+        ).catchError((e) => debugPrint("Mention notif error: $e"));
       }
     }
   }
 
-  /// Helper: Cancel a pending friend request notification
   Future<void> removeFriendRequestNotification({
+    required String targetUserId,
     required String senderId,
   }) async {
     try {
-      final query = await _firestore
-          .collection('users')
-          .doc(currentUserId)
+      final userRef = _firestore.collection('users').doc(targetUserId);
+      final query = await userRef
           .collection('notification')
           .where('senderId', isEqualTo: senderId)
           .where('type', isEqualTo: 'friend_request')
           .get();
 
+      if (query.docs.isEmpty) return;
+
+      int unreadDeleted = 0;
+      final batch = _firestore.batch();
+
       for (var doc in query.docs) {
-        await doc.reference.delete();
+        if (doc.data()['isRead'] == false) unreadDeleted++;
+        batch.delete(doc.reference);
       }
+
+      if (unreadDeleted > 0) {
+        final metaRef = userRef.collection('meta').doc('notifications');
+        // Using a transaction here in the future would prevent negative counts,
+        // but this works for now.
+        batch.set(
+            metaRef,
+            {'unreadCount': FieldValue.increment(-unreadDeleted)},
+            SetOptions(merge: true));
+      }
+
+      await batch.commit();
     } catch (e) {
-      print("Error deleting notification: $e");
+      debugPrint("Error deleting notification: $e");
     }
   }
 
-  /// Helper: Update a notification message (e.g., when Declined or Accepted)
   Future<void> updateFriendRequestStatus({
-    required String targetUserId, // The person who HAS the notification
-    required String senderId, // The person who SENT the notification
+    required String targetUserId,
+    required String senderId,
     required String newMessage,
   }) async {
     try {
-      final query = await _firestore
-          .collection('users')
-          .doc(currentUserId)
+      final userRef = _firestore.collection('users').doc(targetUserId);
+      final query = await userRef
           .collection('notification')
           .where('senderId', isEqualTo: senderId)
           .where('type', isEqualTo: 'friend_request')
           .get();
 
+      if (query.docs.isEmpty) return;
+
+      int unreadMarkedRead = 0;
+      final batch = _firestore.batch();
+
       for (var doc in query.docs) {
-        await doc.reference.update({
+        if (doc.data()['isRead'] == false) unreadMarkedRead++;
+
+        batch.update(doc.reference, {
           'message': newMessage,
+          'isRead': true,
           'timestamp': FieldValue.serverTimestamp(),
           'edited': true,
         });
       }
+
+      if (unreadMarkedRead > 0) {
+        final metaRef = userRef.collection('meta').doc('notifications');
+        batch.set(
+            metaRef,
+            {'unreadCount': FieldValue.increment(-unreadMarkedRead)},
+            SetOptions(merge: true));
+      }
+
+      await batch.commit();
     } catch (e) {
-      print("Error updating notification: $e");
+      debugPrint("Error updating notification: $e");
     }
   }
 }
+
+// ✅ Provider definition
+final notificationServiceProvider = Provider<NotificationService>((ref) {
+  return NotificationService();
+});

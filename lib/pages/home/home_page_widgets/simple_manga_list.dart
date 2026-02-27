@@ -1,6 +1,5 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:otakulink/pages/home/manga_widgets/manga_card.dart';
+import 'package:otakulink/pages/manga/manga_widgets/manga_card.dart';
 
 class SimpleMangaList extends StatelessWidget {
   final List<dynamic> data;
@@ -10,10 +9,7 @@ class SimpleMangaList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (data.isEmpty) {
-      return const SizedBox(
-        height: 260,
-        child: Center(child: Text('No data found')),
-      );
+      return const SizedBox(height: 260, child: Center(child: Text('No data found')));
     }
 
     return SizedBox(
@@ -25,10 +21,7 @@ class SimpleMangaList extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) => SizedBox(
           width: 140,
-          child: MangaCard(
-            manga: data[index],
-            userId: FirebaseAuth.instance.currentUser?.uid,
-          ),
+          child: MangaCard(manga: data[index]), 
         ),
       ),
     );

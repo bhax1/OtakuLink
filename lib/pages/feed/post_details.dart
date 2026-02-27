@@ -2,11 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import 'package:otakulink/pages/feed/post_card.dart';
-import 'package:otakulink/pages/home/manga_details_page.dart';
+import 'package:otakulink/pages/manga/manga_details_page.dart';
 import 'package:otakulink/theme.dart';
 import 'package:otakulink/pages/feed/feed_services/user_cache.dart';
-import 'package:otakulink/pages/profile/viewprofile.dart';
 import 'package:otakulink/pages/feed/reply_widget.dart';
 import 'package:otakulink/pages/feed/reaction_helper.dart'; // Ensure this is imported
 import 'package:timeago/timeago.dart' as timeago;
@@ -16,12 +16,11 @@ class PostDetailsPage extends StatefulWidget {
   final Map<String, dynamic> postData; // Initial data (optional usage now)
   final Function(int) onTabChange;
 
-  const PostDetailsPage({
-    super.key, 
-    required this.postId, 
-    required this.postData,
-    required this.onTabChange
-  });
+  const PostDetailsPage(
+      {super.key,
+      required this.postId,
+      required this.postData,
+      required this.onTabChange});
 
   @override
   State<PostDetailsPage> createState() => _PostDetailsPageState();
@@ -30,9 +29,17 @@ class PostDetailsPage extends StatefulWidget {
 class _PostDetailsPageState extends State<PostDetailsPage> {
   final TextEditingController _replyController = TextEditingController();
   final currentUser = FirebaseAuth.instance.currentUser;
-  
+
   String? _targetParentId;
   String? _targetUsername;
+
+  int _commentLimit = 20;
+
+  void _loadMoreComments() {
+    setState(() {
+      _commentLimit += 20;
+    });
+  }
 
   @override
   void initState() {
@@ -43,7 +50,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   // --- REACTION LOGIC FOR MAIN POST ---
   Future<void> _handleMainReaction(String type, String? current) async {
     final uid = currentUser!.uid;
-    final ref = FirebaseFirestore.instance.collection('feeds').doc(widget.postId);
+    final ref =
+        FirebaseFirestore.instance.collection('feeds').doc(widget.postId);
 
     if (current == type) {
       // Toggle off
@@ -118,11 +126,15 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
     _replyController.clear();
     final targetId = _targetParentId ?? widget.postId;
-    
+
     // Reset target to main post after sending
     _cancelReplyTarget();
 
-    await FirebaseFirestore.instance.collection('feeds').doc(widget.postId).collection('replies').add({
+    await FirebaseFirestore.instance
+        .collection('feeds')
+        .doc(widget.postId)
+        .collection('replies')
+        .add({
       'userId': currentUser!.uid,
       'content': content,
       'timestamp': FieldValue.serverTimestamp(),
@@ -130,15 +142,21 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       'parentId': targetId,
     });
 
-    await FirebaseFirestore.instance.collection('feeds').doc(widget.postId).update({'replyCount': FieldValue.increment(1)});
+    await FirebaseFirestore.instance
+        .collection('feeds')
+        .doc(widget.postId)
+        .update({'replyCount': FieldValue.increment(1)});
   }
 
   void _handleProfileTap(String targetUserId) {
     if (currentUser != null && currentUser!.uid == targetUserId) {
       Navigator.pop(context);
-      widget.onTabChange(4); 
+      widget.onTabChange(4);
     } else {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ViewProfilePage(userId: targetUserId)));
+      context.push(
+        '/profile/$_targetUsername',
+        extra: {'targetUserId': targetUserId},
+      );
     }
   }
 
@@ -147,7 +165,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Thread", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text("Thread",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 0.5,
@@ -173,19 +192,22 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
 
   Widget _buildMainPost() {
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('feeds').doc(widget.postId).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('feeds')
+          .doc(widget.postId)
+          .snapshots(),
       builder: (context, postSnapshot) {
         if (!postSnapshot.hasData) return const SizedBox();
-        
+
         final data = postSnapshot.data!.data() as Map<String, dynamic>;
-        
+
         // Data Extraction
         final String type = data['type'] ?? 'normal';
         final String content = data['comment'] ?? '';
         final String? mangaId = data['mangaId']?.toString();
         final String? mangaTitle = data['mangaTitle'];
         final String? mangaImage = data['mangaImage'];
-        
+
         // Reaction Data
         final reactions = data['reactions'] as Map<String, dynamic>? ?? {};
         final myId = currentUser!.uid;
@@ -211,8 +233,12 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                         onTap: () => _handleProfileTap(data['userId']),
                         child: CircleAvatar(
                           radius: 24,
-                          backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl) : null,
-                          child: photoUrl.isEmpty ? const Icon(Icons.person) : null,
+                          backgroundImage: photoUrl.isNotEmpty
+                              ? CachedNetworkImageProvider(photoUrl)
+                              : null,
+                          child: photoUrl.isEmpty
+                              ? const Icon(Icons.person)
+                              : null,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -223,8 +249,10 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                             _buildHeaderTitle(username, type, data),
                             if (data['timestamp'] != null)
                               Text(
-                                timeago.format((data['timestamp'] as Timestamp).toDate()),
-                                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                timeago.format(
+                                    (data['timestamp'] as Timestamp).toDate()),
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 12),
                               ),
                           ],
                         ),
@@ -232,16 +260,18 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // --- CONTENT TEXT ---
                   if (content.isNotEmpty) ...[
-                    Text(content, style: const TextStyle(fontSize: 16, height: 1.4)),
+                    Text(content,
+                        style: const TextStyle(fontSize: 16, height: 1.4)),
                     const SizedBox(height: 12),
                   ],
 
                   // --- LINKED MANGA (Exact Match to Feed) ---
                   if (mangaId != null && mangaImage != null)
-                     _buildLinkedMangaCard(mangaId, mangaTitle ?? 'Unknown', mangaImage),
+                    _buildLinkedMangaCard(
+                        mangaId, mangaTitle ?? 'Unknown', mangaImage),
 
                   const SizedBox(height: 12),
 
@@ -256,43 +286,57 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     children: [
                       // Reaction Button
                       GestureDetector(
-                        onTap: () => _handleMainReaction(ReactionTypes.like, myReaction),
-                        onLongPress: () => _showMainReactionMenu(context, myReaction),
+                        onTap: () =>
+                            _handleMainReaction(ReactionTypes.like, myReaction),
+                        onLongPress: () =>
+                            _showMainReactionMenu(context, myReaction),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: myReaction != null ? AppColors.primary.withOpacity(0.1) : Colors.grey[100],
+                            color: myReaction != null
+                                ? AppColors.primary.withOpacity(0.1)
+                                : Colors.grey[100],
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
                             children: [
                               Text(
-                                myReaction != null ? ReactionTypes.getEmoji(myReaction) : ReactionTypes.getEmoji(ReactionTypes.like), // Default icon
-                                style: TextStyle(fontSize: myReaction != null ? 18 : 16)
-                              ),
+                                  myReaction != null
+                                      ? ReactionTypes.getEmoji(myReaction)
+                                      : ReactionTypes.getEmoji(
+                                          ReactionTypes.like), // Default icon
+                                  style: TextStyle(
+                                      fontSize: myReaction != null ? 18 : 16)),
                               const SizedBox(width: 6),
-                              
                               if (myReaction == null && reactions.isEmpty)
-                                Text("Like", style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold))
+                                Text("Like",
+                                    style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.bold))
                               else
                                 Text(
-                                  myReaction != null ? ReactionTypes.getName(myReaction) : "${reactions.length}", 
-                                  style: TextStyle(
-                                    color: myReaction != null ? AppColors.primary : Colors.grey[700], 
-                                    fontWeight: FontWeight.bold
-                                  )
-                                ),
+                                    myReaction != null
+                                        ? ReactionTypes.getName(myReaction)
+                                        : "${reactions.length}",
+                                    style: TextStyle(
+                                        color: myReaction != null
+                                            ? AppColors.primary
+                                            : Colors.grey[700],
+                                        fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
                       ),
-                      
+
                       const Spacer(),
-                      
+
                       // Reply Count Indicator
-                      Icon(Icons.chat_bubble_outline, size: 18, color: Colors.grey[500]),
+                      Icon(Icons.chat_bubble_outline,
+                          size: 18, color: Colors.grey[500]),
                       const SizedBox(width: 6),
-                      Text("${data['replyCount'] ?? 0} Comments", style: TextStyle(color: Colors.grey[600])),
+                      Text("${data['replyCount'] ?? 0} Comments",
+                          style: TextStyle(color: Colors.grey[600])),
                     ],
                   ),
                 ],
@@ -305,15 +349,20 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   }
 
   // --- HELPER: Header Title (Copied from PostCard) ---
-  Widget _buildHeaderTitle(String username, String type, Map<String, dynamic> data) {
+  Widget _buildHeaderTitle(
+      String username, String type, Map<String, dynamic> data) {
     if (type == 'activity') {
       final activity = data['activityType'] ?? 'is';
       return RichText(
         text: TextSpan(
           style: const TextStyle(color: Colors.black, fontSize: 16),
           children: [
-            TextSpan(text: username, style: const TextStyle(fontWeight: FontWeight.bold)),
-            TextSpan(text: " is $activity ", style: TextStyle(color: Colors.grey[700])),
+            TextSpan(
+                text: username,
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            TextSpan(
+                text: " is $activity ",
+                style: TextStyle(color: Colors.grey[700])),
           ],
         ),
       );
@@ -323,11 +372,16 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       text: TextSpan(
         style: const TextStyle(color: Colors.black, fontSize: 16),
         children: [
-          TextSpan(text: username, style: const TextStyle(fontWeight: FontWeight.bold)),
+          TextSpan(
+              text: username,
+              style: const TextStyle(fontWeight: FontWeight.bold)),
           if (type == 'qa')
-            const TextSpan(text: " asked a question", style: TextStyle(color: Colors.grey)),
+            const TextSpan(
+                text: " asked a question",
+                style: TextStyle(color: Colors.grey)),
           if (type == 'poll')
-            const TextSpan(text: " started a poll", style: TextStyle(color: Colors.grey)),
+            const TextSpan(
+                text: " started a poll", style: TextStyle(color: Colors.grey)),
         ],
       ),
     );
@@ -342,7 +396,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
           MaterialPageRoute(
             builder: (_) => MangaDetailsPage(
               mangaId: int.parse(id),
-              userId: currentUser!.uid,
             ),
           ),
         );
@@ -350,16 +403,21 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       child: Container(
         height: 100, // Matches Feed
         decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2))]
-        ),
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[200]!),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2))
+            ]),
         child: Row(
           children: [
             // Cover Image
             ClipRRect(
-              borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(12)),
               child: CachedNetworkImage(
                 imageUrl: image,
                 width: 70,
@@ -368,11 +426,12 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                 placeholder: (c, u) => Container(color: Colors.grey[200]),
               ),
             ),
-            
+
             // Info Column
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -381,21 +440,26 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                     const SizedBox(height: 4),
                     const Row(
                       children: [
                         Icon(Icons.link, size: 14, color: AppColors.primary),
                         SizedBox(width: 4),
-                        Text("View Details", style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text("View Details",
+                            style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
                       ],
                     )
                   ],
                 ),
               ),
             ),
-            
+
             // Arrow Icon
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -407,42 +471,57 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     );
   }
 
-  // ... (keep _buildRepliesStream and _buildInputArea the same) ...
-  // Be sure to include the _buildRepliesStream and _buildInputArea methods from your previous code here.
-  
   Widget _buildRepliesStream() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('feeds')
           .doc(widget.postId)
           .collection('replies')
-          .orderBy('timestamp')
+          .orderBy('timestamp', descending: false)
+          .limit(_commentLimit)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
-        
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
         final allDocs = snapshot.data!.docs;
-        
-        // Find top-level comments (direct replies to post)
         final topLevelComments = allDocs.where((doc) {
-           final data = doc.data() as Map<String, dynamic>;
-           return (data['parentId'] ?? widget.postId) == widget.postId;
+          final data = doc.data() as Map<String, dynamic>;
+          return (data['parentId'] ?? widget.postId) == widget.postId;
         }).toList();
 
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: topLevelComments.length,
-          itemBuilder: (context, index) {
-            return CommentTree(
-              doc: topLevelComments[index],
-              allDocs: allDocs,
-              postId: widget.postId,
-              depth: 0,
-              onReplyTap: _setReplyTarget,
-              onTabChange: widget.onTabChange,
-            );
-          },
+        return Column(
+          children: [
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: topLevelComments.length,
+              itemBuilder: (context, index) {
+                return CommentTree(
+                  key: ValueKey(topLevelComments[index].id),
+                  doc: topLevelComments[index],
+                  allDocs: allDocs,
+                  postId: widget.postId,
+                  depth: 0,
+                  onReplyTap: _setReplyTarget,
+                  onTabChange: widget.onTabChange,
+                );
+              },
+            ),
+
+            // LOAD MORE BUTTON
+            // Only show if we hit the current limit (suggesting there might be more)
+            if (allDocs.length >= _commentLimit)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: TextButton.icon(
+                  onPressed: _loadMoreComments,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text("Load older comments"),
+                  style:
+                      TextButton.styleFrom(foregroundColor: AppColors.primary),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -451,7 +530,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   Widget _buildInputArea() {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Colors.grey.shade200))),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey.shade200))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -460,9 +541,13 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
-                  Text("Replying to $_targetUsername", style: const TextStyle(color: AppColors.primary, fontSize: 12)),
+                  Text("Replying to $_targetUsername",
+                      style: const TextStyle(
+                          color: AppColors.primary, fontSize: 12)),
                   const Spacer(),
-                  InkWell(onTap: _cancelReplyTarget, child: const Icon(Icons.close, size: 16))
+                  InkWell(
+                      onTap: _cancelReplyTarget,
+                      child: const Icon(Icons.close, size: 16))
                 ],
               ),
             ),
@@ -475,15 +560,21 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     hintText: "Write a reply...",
                     filled: true,
                     fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               CircleAvatar(
                 backgroundColor: AppColors.primary,
-                child: IconButton(onPressed: _sendReply, icon: const Icon(Icons.send, color: Colors.white, size: 18)),
+                child: IconButton(
+                    onPressed: _sendReply,
+                    icon:
+                        const Icon(Icons.send, color: Colors.white, size: 18)),
               )
             ],
           ),
@@ -502,15 +593,14 @@ class CommentTree extends StatefulWidget {
   final Function(String, String?) onReplyTap;
   final Function(int) onTabChange;
 
-  const CommentTree({
-    super.key,
-    required this.doc,
-    required this.allDocs,
-    required this.postId,
-    required this.depth,
-    required this.onReplyTap,
-    required this.onTabChange
-  });
+  const CommentTree(
+      {super.key,
+      required this.doc,
+      required this.allDocs,
+      required this.postId,
+      required this.depth,
+      required this.onReplyTap,
+      required this.onTabChange});
 
   @override
   State<CommentTree> createState() => _CommentTreeState();
@@ -532,17 +622,18 @@ class _CommentTreeState extends State<CommentTree> {
       children: [
         // The Comment itself
         ReplyWidget(
-          doc: widget.doc, 
-          postId: widget.postId, 
-          depth: widget.depth, 
-          onReplyTap: widget.onReplyTap,
-          onTabChange: widget.onTabChange
-        ),
+            doc: widget.doc,
+            postId: widget.postId,
+            depth: widget.depth,
+            onReplyTap: widget.onReplyTap,
+            onTabChange: widget.onTabChange),
 
         // The "View Replies" Toggle
         if (children.isNotEmpty)
           Padding(
-            padding: EdgeInsets.only(left: 16.0 + (widget.depth * 8) + 40, bottom: 8), // Indent to align with text
+            padding: EdgeInsets.only(
+                left: 16.0 + (widget.depth * 8) + 40,
+                bottom: 8), // Indent to align with text
             child: InkWell(
               onTap: () {
                 setState(() {
@@ -552,17 +643,19 @@ class _CommentTreeState extends State<CommentTree> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(width: 20, height: 1, color: Colors.grey[300]), // Little line
+                  Container(
+                      width: 20,
+                      height: 1,
+                      color: Colors.grey[300]), // Little line
                   const SizedBox(width: 8),
                   Text(
-                    _isExpanded 
-                        ? "Hide replies" 
+                    _isExpanded
+                        ? "Hide replies"
                         : "View ${children.length} replies",
                     style: TextStyle(
-                      color: Colors.grey[600], 
-                      fontSize: 12, 
-                      fontWeight: FontWeight.bold
-                    ),
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
