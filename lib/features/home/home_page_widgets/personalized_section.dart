@@ -1,0 +1,40 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:otakulink/features/home/home_page_widgets/common_widgets.dart';
+import 'package:otakulink/features/home/home_page_widgets/simple_manga_list.dart';
+
+class PersonalizedSection extends StatelessWidget {
+  final AsyncValue<dynamic> asyncData;
+
+  const PersonalizedSection({super.key, required this.asyncData});
+
+  @override
+  Widget build(BuildContext context) {
+    return asyncData.when(
+      data: (data) {
+        if (data == null) return const SizedBox.shrink();
+
+        return Column(
+          children: [
+            SectionHeader(
+              title: 'Because you liked ${data['sourceTitle']}',
+              icon: Icons.recommend,
+              color: Colors.purple,
+            ),
+            SimpleMangaList(data: data['data']),
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+      // Hide section completely if loading or error
+      loading: () => const SizedBox.shrink(),
+      error: (err, stack) => Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Text(
+          'Recommendation Error: $err',
+          style: const TextStyle(color: Colors.red),
+        ),
+      ),
+    );
+  }
+}
