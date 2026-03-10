@@ -345,7 +345,12 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
             if (currentUser != null) {
               context.push(
                 '/manga/${widget.mangaId}/discussion',
-                extra: {'mangaId': widget.mangaId, 'mangaName': title},
+                extra: {
+                  'mangaId': widget.mangaId,
+                  'mangaName': title,
+                  'mangaCover': safeCover,
+                  'mangaDescription': state.sanitizedDescription,
+                },
               );
             }
           },

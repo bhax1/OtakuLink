@@ -158,6 +158,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 mangaName: extra?['mangaName'] ?? 'Discussion',
                 chapterId: extra?['chapterId'],
                 highlightedCommentId: extra?['highlightedCommentId'],
+                mangaCover: extra?['mangaCover'],
+                mangaDescription: extra?['mangaDescription'],
               );
             },
           ),

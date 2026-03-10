@@ -30,197 +30,218 @@ class OtherUserProfilePage extends ConsumerWidget {
           color: Colors.white,
           shadows: [Shadow(blurRadius: 8, color: Colors.black54)],
         ),
+        actions: [
+          IconButton(
+            onPressed: () =>
+                ref.invalidate(userProfileStreamProvider(targetUserId)),
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Profile',
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
-      body: profileAsyncValue.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) =>
-            const Center(child: Text("Could not load profile.")),
-        data: (user) {
-          if (user == null) return const Center(child: Text("User not found."));
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(userProfileStreamProvider(targetUserId));
+          await ref.read(userProfileStreamProvider(targetUserId).future);
+        },
+        child: profileAsyncValue.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) =>
+              const Center(child: Text("Could not load profile.")),
+          data: (user) {
+            if (user == null)
+              return const Center(child: Text("User not found."));
 
-          return DefaultTabController(
-            length: 3,
-            child: NestedScrollView(
-              headerSliverBuilder: (context, innerBoxIsScrolled) {
-                return [
-                  SliverToBoxAdapter(
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Column(
-                          children: [
-                            Container(
-                              height: 180,
-                              width: double.infinity,
+            return DefaultTabController(
+              length: 3,
+              child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  return [
+                    SliverToBoxAdapter(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Column(
+                            children: [
+                              Container(
+                                height: 180,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: theme.dividerColor.withOpacity(
+                                        0.2,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                child: user.bannerUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: user.bannerUrl,
+                                        fit: BoxFit.cover,
+                                        memCacheHeight: 400,
+                                        placeholder: (context, url) =>
+                                            const Center(
+                                              child:
+                                                  CircularProgressIndicator(),
+                                            ),
+                                        errorWidget: (context, url, error) =>
+                                            const Icon(Icons.broken_image),
+                                      )
+                                    : const SizedBox(),
+                              ),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 12.0),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        children: [
+                                          FollowButton(targetUserId: user.id),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      user.displayName,
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "@${user.username}",
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: theme.colorScheme.onSurface
+                                                .withOpacity(0.6),
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        FollowsYouBadge(targetUserId: user.id),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    if (user.bio.isNotEmpty) ...[
+                                      Text(
+                                        user.bio,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          height: 1.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                    ],
+                                    Row(
+                                      children: [
+                                        _buildStat(
+                                          context,
+                                          "Following",
+                                          user.followingCount,
+                                          user.id,
+                                        ),
+                                        const SizedBox(width: 24),
+                                        _buildStat(
+                                          context,
+                                          "Followers",
+                                          user.followerCount,
+                                          user.id,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 24),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          Positioned(
+                            top: 130,
+                            left: 16,
+                            child: Container(
+                              width: 88,
+                              height: 88,
                               decoration: BoxDecoration(
                                 color:
                                     theme.colorScheme.surfaceContainerHighest,
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: theme.dividerColor.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
                                   ),
-                                ),
-                              ),
-                              child: user.bannerUrl.isNotEmpty
-                                  ? CachedNetworkImage(
-                                      imageUrl: user.bannerUrl,
-                                      fit: BoxFit.cover,
-                                      memCacheHeight: 400,
-                                      placeholder: (context, url) =>
-                                          const Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
-                                      errorWidget: (context, url, error) =>
-                                          const Icon(Icons.broken_image),
-                                    )
-                                  : const SizedBox(),
-                            ),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 12.0),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        FollowButton(targetUserId: user.id),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    user.displayName,
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        "@${user.username}",
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: theme.colorScheme.onSurface
-                                              .withOpacity(0.6),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      FollowsYouBadge(targetUserId: user.id),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  if (user.bio.isNotEmpty) ...[
-                                    Text(
-                                      user.bio,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  Row(
-                                    children: [
-                                      _buildStat(
-                                        context,
-                                        "Following",
-                                        user.followingCount,
-                                        user.id,
-                                      ),
-                                      const SizedBox(width: 24),
-                                      _buildStat(
-                                        context,
-                                        "Followers",
-                                        user.followerCount,
-                                        user.id,
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 24),
                                 ],
+                                image: user.avatarUrl.isNotEmpty
+                                    ? DecorationImage(
+                                        image: CachedNetworkImageProvider(
+                                          user.avatarUrl,
+                                          maxHeight: 180,
+                                        ),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
                               ),
-                            ),
-                          ],
-                        ),
-                        Positioned(
-                          top: 130,
-                          left: 16,
-                          child: Container(
-                            width: 88,
-                            height: 88,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                              image: user.avatarUrl.isNotEmpty
-                                  ? DecorationImage(
-                                      image: CachedNetworkImageProvider(
-                                        user.avatarUrl,
-                                        maxHeight: 180,
-                                      ),
-                                      fit: BoxFit.cover,
+                              child: user.avatarUrl.isEmpty
+                                  ? Icon(
+                                      Icons.person,
+                                      size: 40,
+                                      color: theme.colorScheme.onSurfaceVariant,
                                     )
                                   : null,
                             ),
-                            child: user.avatarUrl.isEmpty
-                                ? Icon(
-                                    Icons.person,
-                                    size: 40,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  )
-                                : null,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SliverPersistentHeader(
-                    delegate: _SliverAppBarDelegate(
-                      TabBar(
-                        labelColor: theme.colorScheme.primary,
-                        unselectedLabelColor: theme.colorScheme.onSurface
-                            .withOpacity(0.5),
-                        indicatorColor: theme.colorScheme.primary,
-                        indicatorWeight: 3,
-                        indicatorSize: TabBarIndicatorSize.label,
-                        labelStyle: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                        tabs: const [
-                          Tab(text: "OVERVIEW"),
-                          Tab(text: "LIBRARY"),
-                          Tab(text: "REVIEWS"),
                         ],
                       ),
                     ),
-                    pinned: true,
-                  ),
-                ];
-              },
-              body: TabBarView(
-                children: [
-                  OverviewTab(user: user, isCurrentUser: false),
-                  LibraryTab(userId: user.id),
-                  ReviewsTab(userId: user.id),
-                ],
+                    SliverPersistentHeader(
+                      delegate: _SliverAppBarDelegate(
+                        TabBar(
+                          labelColor: theme.colorScheme.primary,
+                          unselectedLabelColor: theme.colorScheme.onSurface
+                              .withOpacity(0.5),
+                          indicatorColor: theme.colorScheme.primary,
+                          indicatorWeight: 3,
+                          indicatorSize: TabBarIndicatorSize.label,
+                          labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          tabs: const [
+                            Tab(text: "OVERVIEW"),
+                            Tab(text: "LIBRARY"),
+                            Tab(text: "REVIEWS"),
+                          ],
+                        ),
+                      ),
+                      pinned: true,
+                    ),
+                  ];
+                },
+                body: TabBarView(
+                  children: [
+                    OverviewTab(user: user, isCurrentUser: false),
+                    LibraryTab(userId: user.id),
+                    ReviewsTab(userId: user.id),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

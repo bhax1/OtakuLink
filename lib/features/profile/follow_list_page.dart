@@ -31,98 +31,145 @@ class FollowListPage extends ConsumerWidget {
       appBar: AppBar(
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: () {
+              if (isFollowers) {
+                ref.invalidate(followersListProvider(userId));
+              } else {
+                ref.invalidate(followingListProvider(userId));
+              }
+            },
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh List',
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Divider(height: 1, color: theme.dividerColor.withOpacity(0.2)),
         ),
       ),
-      body: asyncList.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) =>
-            const Center(child: Text("Failed to load users.")),
-        data: (users) {
-          if (users.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          if (isFollowers) {
+            ref.invalidate(followersListProvider(userId));
+            await ref.read(followersListProvider(userId).future);
+          } else {
+            ref.invalidate(followingListProvider(userId));
+            await ref.read(followingListProvider(userId).future);
+          }
+        },
+        child: asyncList.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, stack) =>
+              const Center(child: Text("Failed to load users.")),
+          data: (users) {
+            if (users.isEmpty) {
+              return ListView(
                 children: [
-                  Icon(Icons.people_alt_outlined,
-                      size: 60, color: theme.disabledColor),
-                  const SizedBox(height: 16),
-                  Text(
-                    isFollowers
-                        ? "No followers yet."
-                        : "Not following anyone yet.",
-                    style: TextStyle(
-                        color: theme.hintColor, fontWeight: FontWeight.w500),
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.people_alt_outlined,
+                            size: 60,
+                            color: theme.disabledColor,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            isFollowers
+                                ? "No followers yet."
+                                : "Not following anyone yet.",
+                            style: TextStyle(
+                              color: theme.hintColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
-              ),
-            );
-          }
+              );
+            }
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            itemCount: users.length,
-            itemBuilder: (context, index) {
-              final user = users[index];
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border:
-                      Border.all(color: theme.dividerColor.withOpacity(0.2)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
-                      offset: const Offset(2, 2),
-                      blurRadius: 0, // Sharp drop shadow
-                    )
-                  ],
-                ),
-                child: ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  leading: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(10),
-                      image: user.avatarUrl.isNotEmpty
-                          ? DecorationImage(
-                              image: CachedNetworkImageProvider(user.avatarUrl,
-                                  maxHeight: 120),
-                              fit: BoxFit.cover,
-                            )
+            return ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              itemCount: users.length,
+              itemBuilder: (context, index) {
+                final user = users[index];
+                return Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.dividerColor.withOpacity(0.2),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        offset: const Offset(2, 2),
+                        blurRadius: 0, // Sharp drop shadow
+                      ),
+                    ],
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    leading: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                        image: user.avatarUrl.isNotEmpty
+                            ? DecorationImage(
+                                image: CachedNetworkImageProvider(
+                                  user.avatarUrl,
+                                  maxHeight: 120,
+                                ),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: user.avatarUrl.isEmpty
+                          ? const Icon(Icons.person)
                           : null,
                     ),
-                    child: user.avatarUrl.isEmpty
-                        ? const Icon(Icons.person)
-                        : null,
+                    title: Text(
+                      user.displayName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    subtitle: Text(
+                      "@${user.username}",
+                      style: TextStyle(color: theme.hintColor),
+                    ),
+                    onTap: () {
+                      context.push(
+                        '/profile/${user.username}',
+                        extra: {'targetUserId': user.id},
+                      );
+                    },
+                    trailing: FollowButton(targetUserId: user.id),
                   ),
-                  title: Text(
-                    user.displayName,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  subtitle: Text(
-                    "@${user.username}",
-                    style: TextStyle(color: theme.hintColor),
-                  ),
-                  onTap: () {
-                    context.push(
-                      '/profile/${user.username}',
-                      extra: {'targetUserId': user.id},
-                    );
-                  },
-                  trailing: FollowButton(targetUserId: user.id),
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

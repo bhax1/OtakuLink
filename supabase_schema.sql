@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS public.user_manga_notes (
 -- Audit Logs
 CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    actor_id UUID DEFAULT auth.uid() CONSTRAINT audit_logs_actor_id_fkey REFERENCES public.profiles(id) ON DELETE SET NULL,
     action TEXT NOT NULL,
     target_table TEXT,
     target_id UUID,
@@ -532,12 +532,21 @@ CREATE OR REPLACE FUNCTION public.sync_manga_metadata(
     p_description TEXT
 ) RETURNS VOID AS $$
 BEGIN
-  -- We use SECURITY DEFINER to allow regular users to "seed" the mangas table
-  -- but we use ON CONFLICT DO NOTHING to prevent them from modifying existing entries
-  -- which is reserved for moderators/admins.
   INSERT INTO public.mangas (id, title, cover_url, description, updated_at)
   VALUES (p_id, p_title, p_cover_url, p_description, now())
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET
+    title = COALESCE(public.mangas.title, EXCLUDED.title),
+    cover_url = CASE 
+      WHEN public.mangas.cover_url IS NULL OR public.mangas.cover_url = '' 
+      THEN EXCLUDED.cover_url 
+      ELSE public.mangas.cover_url 
+    END,
+    description = CASE 
+      WHEN public.mangas.description IS NULL OR public.mangas.description = '' 
+      THEN EXCLUDED.description 
+      ELSE public.mangas.description 
+    END,
+    updated_at = now();
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

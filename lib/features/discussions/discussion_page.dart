@@ -13,6 +13,8 @@ class DiscussionPage extends ConsumerStatefulWidget {
   final String mangaName;
   final String? chapterId;
   final String? highlightedCommentId;
+  final String? mangaCover;
+  final String? mangaDescription;
 
   const DiscussionPage({
     super.key,
@@ -20,6 +22,8 @@ class DiscussionPage extends ConsumerStatefulWidget {
     required this.mangaName,
     this.chapterId,
     this.highlightedCommentId,
+    this.mangaCover,
+    this.mangaDescription,
   });
 
   @override
@@ -200,6 +204,8 @@ class _DiscussionPageState extends ConsumerState<DiscussionPage> {
                     : (widget.chapterId?.split('-').last ?? ''))
               : null,
           mangaTitle: widget.mangaName,
+          mangaCoverUrl: widget.mangaCover,
+          mangaDescription: widget.mangaDescription,
         );
 
     if (success) {

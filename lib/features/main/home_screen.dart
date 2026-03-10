@@ -198,48 +198,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
       },
       itemBuilder: (_) => [
-        PopupMenuItem(
-          value: 0,
-          enabled: false,
-          child: _buildUserHeader(theme, isGuest),
-        ),
-        const PopupMenuDivider(),
         _buildPopupMenuItem(1, Icons.settings_outlined, 'Settings', theme),
         if (isGuest)
           _buildPopupMenuItem(2, Icons.login_rounded, 'Join Us', theme)
         else
           _buildPopupMenuItem(2, Icons.logout_rounded, 'Logout', theme),
-      ],
-    );
-  }
-
-  Widget _buildUserHeader(ThemeData theme, bool isGuest) {
-    final userState = ref.watch(authControllerProvider);
-    final user = userState.valueOrNull;
-    final userName = user?.displayName ?? user?.username ?? 'Guest';
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: Colors.grey[300],
-          child: const ClipOval(
-            child: Icon(Icons.person, size: 18, color: Colors.grey),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Flexible(
-          child: Text(
-            userName,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
       ],
     );
   }

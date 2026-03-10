@@ -85,7 +85,7 @@ class SupabaseDiscussionRepository implements IDiscussionRepository {
                   id: json['id'],
                   mangaId: json['manga_id'],
                   userId: json['user_id'],
-                  username: 'Loading...', // Temporary
+                  username: 'Loading...',
                   textContent: json['text_content'],
                   chapterId: json['chapter_id'],
                   createdAt: DateTime.parse(json['created_at']),
