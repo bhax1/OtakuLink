@@ -10,8 +10,6 @@ import 'package:go_router/go_router.dart';
 import 'package:otakulink/features/manga/utils/manga_details_utils.dart';
 import 'package:otakulink/features/manga/controllers/manga_details_controller.dart';
 
-import 'package:otakulink/core/providers/security_provider.dart';
-import 'package:otakulink/core/widgets/verification_banner.dart';
 import 'package:otakulink/core/utils/app_snackbar.dart';
 
 import 'widgets/person_card.dart';
@@ -280,7 +278,6 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
   @override
   Widget build(BuildContext context) {
     final uiState = ref.watch(mangaDetailsControllerProvider(widget.mangaId));
-    final securityService = ref.watch(securityServiceProvider);
     final statsAsync = ref.watch(mangaStatsStreamProvider(widget.mangaId));
 
     ref.listen(mangaDetailsControllerProvider(widget.mangaId), (
@@ -297,7 +294,6 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
     return Scaffold(
       body: Column(
         children: [
-          VerificationBanner(securityService: securityService),
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 800),

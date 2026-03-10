@@ -114,13 +114,14 @@ CREATE TABLE IF NOT EXISTS public.discussion_reactions (
 -- Content Reporting Table
 CREATE TABLE public.content_reports (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    reporter_id uuid REFERENCES auth.users(id) NOT NULL,
-    content_type text NOT NULL, -- 'discussion'
+    reporter_id uuid REFERENCES public.profiles(id) NOT NULL,
+    content_type text NOT NULL, -- 'discussion' 
     content_id uuid NOT NULL,
     reason text NOT NULL,
     details text,
     status text DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'dismissed')),
-    created_at timestamptz DEFAULT now()
+    created_at timestamptz DEFAULT now(),
+    CONSTRAINT content_reports_reporter_id_fkey FOREIGN KEY (reporter_id) REFERENCES public.profiles(id)
 );
 
 -- Notifications Table
@@ -162,14 +163,14 @@ ALTER TABLE public.user_manga_list ADD COLUMN IF NOT EXISTS latest_chapter_notif
 CREATE OR REPLACE FUNCTION public.is_mod() RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles 
-    WHERE id = auth.uid() AND role IN ('moderator', 'admin', 'owner')
+    WHERE id = auth.uid() AND (role IN ('moderator', 'admin', 'owner'))
   );
 $$ LANGUAGE sql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION public.is_admin() RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles 
-    WHERE id = auth.uid() AND role = 'admin' OR role = 'owner'
+    WHERE id = auth.uid() AND (role = 'admin' OR role = 'owner')
   );
 $$ LANGUAGE sql SECURITY DEFINER;
 
@@ -783,3 +784,9 @@ DROP TRIGGER IF EXISTS on_message_sync_last_message ON public.chat_messages;
 CREATE TRIGGER on_message_sync_last_message
 AFTER INSERT OR DELETE OR UPDATE OF message_text ON public.chat_messages
 FOR EACH ROW EXECUTE FUNCTION public.sync_room_last_message();
+
+-- Allow mods and admins to insert into audit_logs
+CREATE POLICY "Mods and Admins can insert audit logs" 
+ON public.audit_logs FOR INSERT 
+TO authenticated 
+WITH CHECK (public.is_mod());
