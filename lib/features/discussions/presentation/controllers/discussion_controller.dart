@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:otakulink/core/utils/secure_logger.dart';
 import '../../domain/entities/discussion_entities.dart';
 import '../../data/repositories/discussion_repository.dart';
+import 'package:otakulink/core/services/audit_service.dart';
+import 'package:otakulink/core/utils/validators.dart';
 
 class DiscussionState {
   final bool isLoading;
@@ -178,7 +180,11 @@ class DiscussionController
     String? mangaCoverUrl,
     String? mangaDescription,
   }) async {
-    if (text.trim().isEmpty) return false;
+    final validationError = AppValidators.validateRequired(text, 'Comment');
+    if (validationError != null) {
+      state = state.copyWith(errorMessage: validationError);
+      return false;
+    }
 
     state = state.copyWith(isSending: true);
     try {
@@ -198,6 +204,18 @@ class DiscussionController
         mangaCoverUrl: mangaCoverUrl,
         mangaDescription: mangaDescription,
       );
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'post_comment',
+            targetTable: 'discussions',
+            details: {
+              'mangaId': mangaId,
+              'chapterId': chapterId,
+              'hasReply': replyToId != null,
+            },
+          );
 
       // Refresh first page
       await loadComments(page: 1);
@@ -246,6 +264,16 @@ class DiscussionController
         reason: reason,
         details: details,
       );
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'report_comment',
+            targetTable: 'discussion_reports',
+            targetId: commentId,
+            details: {'reason': reason},
+          );
+
       return true;
     } catch (e, stack) {
       SecureLogger.logError("DiscussionController reportComment", e, stack);

@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/audit_service.dart';
+import '../../../../core/utils/secure_logger.dart';
 import '../../data/notification_repository.dart';
 import '../../domain/notification_entity.dart';
 
@@ -50,9 +52,14 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
 
     try {
       await repo.deleteNotification(id);
-    } catch (e) {
+    } catch (e, stack) {
       // Rollback on failure
       state = previousState;
+      SecureLogger.logError(
+        'NotificationController.deleteNotification',
+        e,
+        stack,
+      );
       rethrow;
     }
   }
@@ -87,7 +94,11 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
       state = AsyncValue.data(newList);
     }
 
-    await repo.markAsRead(id);
+    try {
+      await repo.markAsRead(id);
+    } catch (e, stack) {
+      SecureLogger.logError('NotificationController.markAsRead', e, stack);
+    }
   }
 
   Future<void> markAllAsRead() async {
@@ -116,13 +127,26 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
       state = AsyncValue.data(newList);
     }
 
-    await repo.markAllAsRead();
+    try {
+      await repo.markAllAsRead();
+    } catch (e, stack) {
+      SecureLogger.logError('NotificationController.markAllAsRead', e, stack);
+    }
   }
 
   Future<void> clearAll() async {
     final repo = ref.read(notificationRepositoryProvider);
+    final previousState = state;
+
     state = const AsyncValue.data([]);
-    await repo.clearAllNotifications();
+
+    try {
+      await repo.clearAllNotifications();
+      ref.read(auditServiceProvider).logAction(action: 'clear_notifications');
+    } catch (e, stack) {
+      state = previousState;
+      SecureLogger.logError('NotificationController.clearAll', e, stack);
+    }
   }
 
   Future<void> refresh() async {

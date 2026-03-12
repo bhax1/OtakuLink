@@ -25,7 +25,9 @@ class SearchResultModel extends SearchResultEntity {
           titleMap?['display'] ??
           titleMap?['english'] ??
           titleMap?['romaji'] ??
+          titleMap?['native'] ??
           'Unknown',
+
       coverImage: coverMap?['large'] as String?,
       status: json['status'] as String? ?? 'Unknown',
       score: rawScore != null ? (rawScore / 10.0) : null,

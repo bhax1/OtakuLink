@@ -162,9 +162,11 @@ class AnilistRemoteDataSource {
             'title': {
               'english': item['title']['english'],
               'romaji': item['title']['romaji'],
+              'native': item['title']['native'],
               'display':
                   item['title']['english'] ??
                   item['title']['romaji'] ??
+                  item['title']['native'] ??
                   'Unknown',
             },
             'coverImage': item['coverImage'],
@@ -230,8 +232,12 @@ class AnilistRemoteDataSource {
                 'title': {
                   'english': item['title']['english'],
                   'romaji': item['title']['romaji'],
+                  'native': item['title']['native'],
                   'display':
-                      item['title']['english'] ?? item['title']['romaji'],
+                      item['title']['english'] ?? 
+                      item['title']['romaji'] ??
+                      item['title']['native'] ??
+                      'Unknown',
                 },
                 'coverImage': {
                   'large': item['coverImage']['large'],
@@ -412,9 +418,11 @@ class AnilistRemoteDataSource {
                 'title': {
                   'english': item['title']['english'],
                   'romaji': item['title']['romaji'],
+                  'native': item['title']['native'],
                   'display':
                       item['title']['english'] ??
                       item['title']['romaji'] ??
+                      item['title']['native'] ??
                       'Unknown',
                 },
                 'coverImage': item['coverImage'],
@@ -467,9 +475,11 @@ class AnilistRemoteDataSource {
                 'title': {
                   'english': item['title']['english'],
                   'romaji': item['title']['romaji'],
+                  'native': item['title']['native'],
                   'display':
                       item['title']['english'] ??
                       item['title']['romaji'] ??
+                      item['title']['native'] ??
                       'Unknown',
                 },
                 'coverImage': item['coverImage'],

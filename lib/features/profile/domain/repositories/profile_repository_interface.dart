@@ -28,6 +28,17 @@ abstract class ProfileRepositoryInterface {
     required int limit,
   });
 
+  Future<List<LibraryEntryEntity>> getLibrary({
+    required String uid,
+    String? status,
+    bool favoritesOnly = false,
+    String sortBy = 'updatedAt',
+    bool ascending = false,
+    required int limit,
+  });
+
   Stream<List<LibraryEntryEntity>> getReviewsStream(String uid,
       {required int limit});
+
+  Future<List<LibraryEntryEntity>> getReviews(String uid, {required int limit});
 }

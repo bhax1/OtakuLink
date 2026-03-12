@@ -157,8 +157,8 @@ class _LibraryTabState extends ConsumerState<LibraryTab>
           ),
         ),
         Expanded(
-          child: StreamBuilder<List<LibraryEntryEntity>>(
-            stream: profileRepo.getLibraryStream(
+          child: FutureBuilder<List<LibraryEntryEntity>>(
+            future: profileRepo.getLibrary(
               uid: widget.userId,
               status: _settings.status,
               favoritesOnly: _settings.favoritesOnly,
@@ -170,6 +170,9 @@ class _LibraryTabState extends ConsumerState<LibraryTab>
               if (snapshot.connectionState == ConnectionState.waiting &&
                   !snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _buildEmptyState(context, "Error loading library.");
               }
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return _buildEmptyState(context, "Library empty.");

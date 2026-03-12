@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../auth_providers.dart';
+import '../../../../core/services/audit_service.dart';
 
 /// The state class could also be created using Freezed, but we use AsyncValue implicitly with AsyncNotifier.
 class AuthController extends AsyncNotifier<UserEntity?> {
@@ -25,17 +26,40 @@ class AuthController extends AsyncNotifier<UserEntity?> {
       password: password,
     );
 
-    result.fold((failure) {
-      state = AsyncValue.error(failure.message, StackTrace.current);
-      throw AuthException(failure.message);
-    }, (user) => state = AsyncValue.data(user));
+    result.fold(
+      (failure) {
+        state = AsyncValue.error(failure.message, StackTrace.current);
+        throw AuthException(failure.message);
+      },
+      (user) {
+        state = AsyncValue.data(user);
+        ref
+            .read(auditServiceProvider)
+            .logAction(
+              action: 'login',
+              targetTable: 'profiles',
+              targetId: user.id,
+            );
+      },
+    );
   }
 
   Future<void> logout() async {
     state = const AsyncValue.loading();
 
     final repository = ref.read(authRepositoryProvider);
+    final userBeforeLogout = state.valueOrNull;
     await repository.logout();
+
+    if (userBeforeLogout != null) {
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'logout',
+            targetTable: 'profiles',
+            targetId: userBeforeLogout.id,
+          );
+    }
 
     state = const AsyncValue.data(null);
   }
@@ -56,10 +80,23 @@ class AuthController extends AsyncNotifier<UserEntity?> {
       displayName: displayName,
     );
 
-    result.fold((failure) {
-      state = AsyncValue.error(failure.message, StackTrace.current);
-      throw AuthException(failure.message);
-    }, (user) => state = AsyncValue.data(user));
+    result.fold(
+      (failure) {
+        state = AsyncValue.error(failure.message, StackTrace.current);
+        throw AuthException(failure.message);
+      },
+      (user) {
+        state = AsyncValue.data(user);
+        ref
+            .read(auditServiceProvider)
+            .logAction(
+              action: 'signup',
+              targetTable: 'profiles',
+              targetId: user.id,
+              details: {'username': username, 'email': email},
+            );
+      },
+    );
   }
 
   Future<void> sendPasswordReset(String email) async {

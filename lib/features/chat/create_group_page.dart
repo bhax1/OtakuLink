@@ -7,6 +7,8 @@ import 'package:otakulink/features/profile/data/repositories/profile_repository.
 import 'package:otakulink/core/utils/secure_logger.dart';
 import 'package:otakulink/features/profile/data/repositories/follow_repository.dart';
 import 'package:otakulink/core/utils/app_snackbar.dart';
+import 'package:otakulink/core/services/audit_service.dart';
+import 'package:otakulink/core/utils/validators.dart';
 
 class CreateGroupPage extends ConsumerStatefulWidget {
   const CreateGroupPage({super.key});
@@ -88,13 +90,37 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
 
     try {
       final iconUrl = _iconUrlController.text.trim();
+      final groupName = _nameController.text.trim();
+
+      final validationError = AppValidators.validateRequired(
+        groupName,
+        'Group Name',
+      );
+      if (validationError != null) {
+        AppSnackBar.show(context, validationError, type: SnackBarType.error);
+        setState(() => _isLoading = false);
+        return;
+      }
+
       final chatRepo = ref.read(chatRepositoryProvider);
 
-      await chatRepo.createGroupChat(
-        groupName: _nameController.text.trim(),
+      final roomId = await chatRepo.createGroupChat(
+        groupName: groupName,
         selectedUserIds: _selectedUserIds.toList(),
         groupIconUrl: iconUrl.isNotEmpty ? iconUrl : null,
       );
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'create_chat_group',
+            targetTable: 'chat_rooms',
+            targetId: roomId,
+            details: {
+              'memberCount': _selectedUserIds.length + 1,
+              'isPublic': false, // Assumption for now
+            },
+          );
 
       if (mounted) Navigator.pop(context);
     } catch (e, stack) {

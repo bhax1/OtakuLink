@@ -7,6 +7,8 @@ import 'package:otakulink/features/profile/domain/entities/profile_entities.dart
 import 'package:otakulink/features/profile/data/repositories/profile_repository.dart';
 import 'package:otakulink/features/profile/data/repositories/follow_repository.dart';
 import 'package:otakulink/core/utils/secure_logger.dart';
+import 'package:otakulink/core/services/audit_service.dart';
+import 'package:otakulink/core/utils/validators.dart';
 
 class GroupSettingsPage extends ConsumerStatefulWidget {
   final String roomId;
@@ -105,8 +107,19 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
     setState(() => _isLoading = true);
     try {
       final chatRepo = ref.read(chatRepositoryProvider);
+      final audit = ref.read(auditServiceProvider);
       final newName = _nameController.text.trim();
       final newIcon = _iconUrlController.text.trim();
+
+      final validationError = AppValidators.validateRequired(
+        newName,
+        'Group Name',
+      );
+      if (validationError != null) {
+        AppSnackBar.show(context, validationError, type: SnackBarType.error);
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Update Group Info if changed
       if (newName != widget.currentName ||
@@ -116,6 +129,16 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
           name: newName != widget.currentName ? newName : null,
           iconUrl: newIcon != (widget.currentIconUrl ?? '') ? newIcon : null,
         );
+
+        audit.logAction(
+          action: 'update_group_info',
+          targetTable: 'chat_rooms',
+          targetId: widget.roomId,
+          details: {
+            'nameChanged': newName != widget.currentName,
+            'iconChanged': newIcon != (widget.currentIconUrl ?? ''),
+          },
+        );
       }
 
       // Add new members if any
@@ -123,6 +146,13 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
         await chatRepo.addMembersToGroup(
           roomId: widget.roomId,
           userIds: _selectedNewUserIds.toList(),
+        );
+
+        audit.logAction(
+          action: 'add_group_members',
+          targetTable: 'chat_rooms',
+          targetId: widget.roomId,
+          details: {'count': _selectedNewUserIds.length},
         );
       }
 
@@ -173,8 +203,23 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
       if (isAdmin && _currentMembers.length <= 1) {
         // Last person and admin, just delete
         await ref.read(chatRepositoryProvider).deleteGroup(widget.roomId);
+        ref
+            .read(auditServiceProvider)
+            .logAction(
+              action: 'delete_chat_group',
+              targetTable: 'chat_rooms',
+              targetId: widget.roomId,
+              details: {'reason': 'last_member_left'},
+            );
       } else {
         await ref.read(chatRepositoryProvider).leaveGroup(widget.roomId);
+        ref
+            .read(auditServiceProvider)
+            .logAction(
+              action: 'leave_chat_group',
+              targetTable: 'chat_rooms',
+              targetId: widget.roomId,
+            );
       }
 
       if (mounted) {
@@ -217,6 +262,16 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
     setState(() => _isLoading = true);
     try {
       await ref.read(chatRepositoryProvider).deleteGroup(widget.roomId);
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'delete_chat_group',
+            targetTable: 'chat_rooms',
+            targetId: widget.roomId,
+            details: {'reason': 'manual_admin_action'},
+          );
+
       if (mounted) {
         Navigator.popUntil(context, (route) => route.isFirst);
       }
@@ -257,6 +312,16 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
       await ref
           .read(chatRepositoryProvider)
           .transferAdminRights(roomId: widget.roomId, newAdminId: userId);
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'transfer_group_admin',
+            targetTable: 'chat_rooms',
+            targetId: widget.roomId,
+            details: {'newAdminId': userId},
+          );
+
       await _fetchMembersAndMutuals(); // Refresh to update admin status
       if (mounted) {
         AppSnackBar.show(
@@ -278,6 +343,16 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
       await ref
           .read(chatRepositoryProvider)
           .removeMemberFromGroup(roomId: widget.roomId, userId: userId);
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'remove_group_member',
+            targetTable: 'chat_rooms',
+            targetId: widget.roomId,
+            details: {'removedUserId': userId},
+          );
+
       await _fetchMembersAndMutuals(); // Refresh list
     } catch (e, stack) {
       SecureLogger.logError("GroupSettingsPage _handleRemoveMember", e, stack);

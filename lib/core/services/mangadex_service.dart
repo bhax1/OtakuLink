@@ -129,10 +129,23 @@ class MangaDexService {
     return 2;
   }
 
+  static String _normalizeTitle(String title) {
+    return title
+        .toLowerCase()
+        // Replace special punctuation with spaces to allow loose matching
+        .replaceAll(RegExp(r'[:\-\.\!\?\( \)]'), ' ')
+        // Remove multiple spaces
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   // --- PUBLIC METHODS ---
 
   static Future<String?> searchMangaId(String title) async {
-    final cacheKey = 'md_search_${title.toLowerCase().trim()}';
+    final normalized = _normalizeTitle(title);
+    if (normalized.isEmpty) return null;
+    
+    final cacheKey = 'md_search_${normalized.replaceAll(' ', '_')}';
 
     final cachedId = await LocalCacheService.getMangaDexCache(
       cacheKey,
@@ -185,6 +198,25 @@ class MangaDexService {
       }
     } catch (e, stack) {
       SecureLogger.logError("MD Search", e, stack);
+    }
+    return null;
+  }
+
+  static Future<String?> searchMangaIdWithFallbacks(List<String> titles) async {
+    // 1. Try exact searches for each title
+    for (final title in titles) {
+      if (title.trim().isEmpty || title.toLowerCase() == 'unknown') continue;
+      
+      // Try with original title
+      final id = await searchMangaId(title);
+      if (id != null) return id;
+
+      // Try with normalized title if different
+      final normalized = _normalizeTitle(title);
+      if (normalized != title.toLowerCase().trim() && normalized.isNotEmpty) {
+        final normId = await searchMangaId(normalized);
+        if (normId != null) return normId;
+      }
     }
     return null;
   }

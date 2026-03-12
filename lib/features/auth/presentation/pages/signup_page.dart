@@ -149,7 +149,8 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                     label: 'Display Name',
                     prefixIcon: Icons.badge_outlined,
                     autofillHints: const [AutofillHints.name],
-                    // validator: (value) => value!.isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        AppValidators.validateRequired(v, 'Display Name'),
                   ),
                   CustomTextField(
                     controller: _emailController,

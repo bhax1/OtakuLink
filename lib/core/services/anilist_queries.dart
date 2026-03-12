@@ -6,7 +6,7 @@ class AniListQueries {
       Page(page: 1, perPage: 10) {
         media(sort: TRENDING_DESC, type: MANGA, isAdult: \$isAdult) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { extraLarge large medium color }
           bannerImage
           averageScore
@@ -25,7 +25,7 @@ class AniListQueries {
       Page(page: 1, perPage: 15) {
         media(sort: POPULARITY_DESC, type: MANGA, status: RELEASING, startDate_greater: \$year, isAdult: \$isAdult) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { large medium color }
           averageScore
           status
@@ -41,7 +41,7 @@ class AniListQueries {
       Page(page: 2, perPage: 15) { 
         media(sort: TRENDING_DESC, type: MANGA, isAdult: \$isAdult) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { large medium color }
           averageScore
           status
@@ -57,7 +57,7 @@ class AniListQueries {
       Page(page: 1, perPage: 15) {
         media(sort: SCORE_DESC, type: MANGA, averageScore_greater: 88, isAdult: \$isAdult) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { large medium color }
           averageScore
           status
@@ -73,7 +73,7 @@ class AniListQueries {
       Page(page: 1, perPage: 15) {
         media(sort: FAVOURITES_DESC, type: MANGA, isAdult: \$isAdult) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { large medium color }
           averageScore
           status
@@ -89,7 +89,7 @@ class AniListQueries {
       Page(page: 1, perPage: 15) {
         media(sort: TRENDING_DESC, type: MANGA, countryOfOrigin: "KR", isAdult: \$isAdult) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { large medium color }
           averageScore
           status
@@ -114,7 +114,7 @@ class AniListQueries {
           isAdult: \$isAdult
         ) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { extraLarge large medium color }
           averageScore
           status
@@ -140,7 +140,7 @@ class AniListQueries {
           isAdult: \$isAdult
         ) {
           id
-          title { romaji english }
+          title { romaji english native }
           coverImage { extraLarge large medium color }
           bannerImage
           averageScore
@@ -159,12 +159,12 @@ class AniListQueries {
   static const String queryRecommendations = '''
     query (\$id: Int) {
       Media(id: \$id, type: MANGA) {
-        title { romaji english }
+        title { romaji english native }
         recommendations(perPage: 10, sort: RATING_DESC) {
           nodes {
             mediaRecommendation {
               id
-              title { romaji english }
+              title { romaji english native }
               coverImage { large medium color }
               averageScore
               status
@@ -218,7 +218,7 @@ class AniListQueries {
           nodes { 
             mediaRecommendation { 
               id 
-              title { romaji english } 
+              title { romaji english native } 
               coverImage { large medium color } 
             } 
           }
@@ -291,7 +291,7 @@ class AniListQueries {
           nodes {
             mediaRecommendation {
               id
-              title { romaji english }
+              title { romaji english native }
               coverImage { extraLarge large medium color }
               averageScore
               status

@@ -256,8 +256,8 @@ class _StarRating extends StatelessWidget {
           onTapDown: (details) {
             final box = context.findRenderObject() as RenderBox;
             final double localX = details.localPosition.dx;
+            final double starX = localX;
             final double starWidth = box.size.width / 5;
-            final double starX = localX - (index * starWidth);
 
             // If tapped on left half of star, give half star
             double newRating = starValue;

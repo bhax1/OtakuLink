@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS public.user_manga_list (
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     manga_id INTEGER NOT NULL REFERENCES public.mangas(id) ON DELETE CASCADE,
     status TEXT CHECK (status IN ('Completed', 'Reading', 'Dropped', 'On Hold', 'Plan to Read')),
-    rating FLOAT DEFAULT 0,
+    rating FLOAT DEFAULT 0 CHECK (rating >= 0 AND rating <= 10),
     is_favorite BOOLEAN DEFAULT false,
     last_read_id TEXT,
     last_read_page INTEGER DEFAULT 0,
@@ -221,9 +221,9 @@ ON public.content_reports FOR ALL
 TO authenticated
 USING (public.is_mod() OR public.is_admin());
 
--- Discussions: Public Read, Auth Insert, Owner/Mod Delete
+-- Discussions: Public Read, Auth Insert (Verify ID), Owner/Mod Delete
 CREATE POLICY "Anyone can view discussions" ON public.discussions FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can post discussions" ON public.discussions FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "Authenticated users can post discussions" ON public.discussions FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Owners can edit/delete own discussions" ON public.discussions FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Moderators can delete inappropriate discussions" ON public.discussions FOR DELETE USING (public.is_mod());
 
@@ -255,6 +255,22 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Prevent non-admins from promoting themselves or others
+CREATE OR REPLACE FUNCTION public.prevent_role_escalation()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- If role is changing, actor must be an admin
+  IF OLD.role IS DISTINCT FROM NEW.role AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Only admins can change user roles.';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_profile_role_update
+  BEFORE UPDATE OF role ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_role_escalation();
 
 -- Auto-create notification on reply
 CREATE OR REPLACE FUNCTION public.handle_new_reply() RETURNS TRIGGER AS $$
@@ -422,8 +438,14 @@ FOR UPDATE USING (public.is_room_participant(id));
 CREATE POLICY "Participants can see others in the room" ON public.chat_room_participants 
 FOR SELECT USING (public.is_room_participant(room_id));
 
-CREATE POLICY "Users can add participants" ON public.chat_room_participants 
-FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Only the room admin can add participants (including themselves during creation)
+CREATE POLICY "Admins can add participants" ON public.chat_room_participants 
+FOR INSERT WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.chat_rooms 
+    WHERE id = room_id AND admin_id = auth.uid()
+  )
+);
 
 CREATE POLICY "Users can update their own participation status" ON public.chat_room_participants 
 FOR UPDATE USING (auth.uid() = user_id);
@@ -535,7 +557,13 @@ BEGIN
   INSERT INTO public.mangas (id, title, cover_url, description, updated_at)
   VALUES (p_id, p_title, p_cover_url, p_description, now())
   ON CONFLICT (id) DO UPDATE SET
-    title = COALESCE(public.mangas.title, EXCLUDED.title),
+    title = CASE 
+      WHEN public.mangas.title IS NULL OR public.mangas.title = '' OR public.mangas.title = 'Unknown' 
+      THEN EXCLUDED.title 
+      WHEN EXCLUDED.title IS NOT NULL AND EXCLUDED.title != 'Unknown' 
+      THEN EXCLUDED.title
+      ELSE public.mangas.title 
+    END,
     cover_url = CASE 
       WHEN public.mangas.cover_url IS NULL OR public.mangas.cover_url = '' 
       THEN EXCLUDED.cover_url 
@@ -559,7 +587,7 @@ CREATE TABLE IF NOT EXISTS public.manga_stats (
     bookmark_count INTEGER DEFAULT 0,
     rating_sum FLOAT DEFAULT 0,
     rating_count INTEGER DEFAULT 0,
-    average_rating FLOAT DEFAULT 0.0,
+    average_rating FLOAT DEFAULT 0.0 CHECK (average_rating >= 0 AND average_rating <= 10),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -799,3 +827,21 @@ CREATE POLICY "Mods and Admins can insert audit logs"
 ON public.audit_logs FOR INSERT 
 TO authenticated 
 WITH CHECK (public.is_mod());
+
+-- ----------------------------------------------------
+-- SECURE AUDIT LOGGING HARDENING (PHASE 7)
+-- ----------------------------------------------------
+
+-- Secure RPC to allow regular users to log actions without direct table access.
+-- This function automatically captures auth.uid() as actor_id to prevent spoofing.
+CREATE OR REPLACE FUNCTION public.log_user_action(
+    p_action TEXT,
+    p_target_table TEXT DEFAULT NULL,
+    p_target_id UUID DEFAULT NULL,
+    p_details JSONB DEFAULT NULL
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO public.audit_logs (actor_id, action, target_table, target_id, details)
+    VALUES (auth.uid(), p_action, p_target_table, p_target_id, p_details);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

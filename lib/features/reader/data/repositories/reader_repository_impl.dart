@@ -10,9 +10,11 @@ class ReaderRepositoryImpl implements ReaderRepositoryInterface {
 
   @override
   Future<List<Map<String, dynamic>>> fetchChapters(
-    String mangaIdOrTitle,
-  ) async {
-    String? dexId;
+    String mangaIdOrTitle, {
+    String? dexId,
+    List<String> titles = const [],
+  }) async {
+    String? finalDexId = dexId;
 
     // Basic UUID check: MangaDex IDs are 36-char UUIDs
     final uuidRegex = RegExp(
@@ -23,24 +25,31 @@ class ReaderRepositoryImpl implements ReaderRepositoryInterface {
     SecureLogger.info(
       "ReaderRepository: Fetching chapters for '$mangaIdOrTitle'",
     );
-    if (uuidRegex.hasMatch(mangaIdOrTitle)) {
-      dexId = mangaIdOrTitle;
-      SecureLogger.info("ReaderRepository: Found UUID, using directly: $dexId");
-    } else {
-      dexId = await MangaDexService.searchMangaId(mangaIdOrTitle);
+    if (finalDexId != null && uuidRegex.hasMatch(finalDexId)) {
       SecureLogger.info(
-        "ReaderRepository: Search for title returned dexId: $dexId",
+        "ReaderRepository: Using provided MangaDex ID: $finalDexId",
+      );
+    } else if (uuidRegex.hasMatch(mangaIdOrTitle)) {
+      finalDexId = mangaIdOrTitle;
+      SecureLogger.info(
+        "ReaderRepository: Found UUID in title string, using: $finalDexId",
+      );
+    } else {
+      final searchTitles = [mangaIdOrTitle, ...titles];
+      finalDexId = await MangaDexService.searchMangaIdWithFallbacks(searchTitles);
+      SecureLogger.info(
+        "ReaderRepository: Search for titles $searchTitles returned: $finalDexId",
       );
     }
 
-    if (dexId == null) {
+    if (finalDexId == null) {
       SecureLogger.info(
         "ReaderRepository: dexId is null, returning empty list.",
       );
       return [];
     }
 
-    final chapters = await MangaDexService.getChapters(dexId);
+    final chapters = await MangaDexService.getChapters(finalDexId);
     SecureLogger.info("ReaderRepository: Found ${chapters.length} chapters.");
     return chapters;
   }

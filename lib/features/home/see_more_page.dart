@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:otakulink/core/utils/app_snackbar.dart';
 import 'package:otakulink/core/utils/secure_logger.dart';
 import 'package:otakulink/features/manga/widgets/manga_card.dart';
 
@@ -150,9 +151,11 @@ class _SeeMorePageState extends ConsumerState<SeeMorePage> {
       SecureLogger.logError("SeeMorePage _fetchPage", e, stack);
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
+        AppSnackBar.show(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error loading page: $e')));
+          'Error loading page: $e',
+          type: SnackBarType.error,
+        );
       }
     }
   }
@@ -194,8 +197,10 @@ class _SeeMorePageState extends ConsumerState<SeeMorePage> {
                 Navigator.pop(context);
                 _fetchPage(page);
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Invalid page number")),
+                AppSnackBar.show(
+                  context,
+                  "Invalid page number",
+                  type: SnackBarType.warning,
                 );
               }
             },

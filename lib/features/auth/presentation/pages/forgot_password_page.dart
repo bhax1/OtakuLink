@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/utils/app_snackbar.dart';
+import '../../../../core/utils/validators.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_widgets.dart';
 
@@ -115,8 +116,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                   autofillHints: const [AutofillHints.email],
                   action: TextInputAction.done,
                   onSubmitted: (_) => _handleReset(),
-                  validator: (v) =>
-                      (v == null || !v.contains('@')) ? 'Invalid email' : null,
+                  validator: AppValidators.validateEmail,
                 ),
                 const SizedBox(height: 10),
                 PrimaryButton(

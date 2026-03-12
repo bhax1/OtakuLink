@@ -6,6 +6,8 @@ import 'package:otakulink/features/profile/data/repositories/profile_repository.
 import 'package:otakulink/features/profile/domain/entities/profile_entities.dart';
 import 'package:otakulink/core/utils/app_snackbar.dart';
 import 'package:otakulink/core/utils/secure_logger.dart';
+import 'package:otakulink/core/utils/validators.dart';
+import 'package:otakulink/core/services/audit_service.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
   final ProfileEntity user;
@@ -47,20 +49,19 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   ImageProvider _getImageProvider(String url) {
     if (url.isEmpty || !url.startsWith('http')) {
-      return const AssetImage('assets/placeholder.png');
+      // Fixed: Replaced AssetImage with NetworkImage for web URLs.
+      // (If you want a local file, change this back to AssetImage('assets/your_image.png'))
+      return const NetworkImage('https://placehold.co/600x400/png');
     }
     return CachedNetworkImageProvider(url, maxHeight: 400);
   }
 
-  // ... (Keep existing _validateImageLink logic unchanged)
   Future<String?> _validateImageLink(String url, {required int maxRes}) async {
-    final validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
-    bool hasValidExt = validExtensions.any(
-      (ext) => url.toLowerCase().contains(ext),
-    );
-    if (!hasValidExt) return "Link must contain .jpg, .png, or .webp";
+    // The extension validation block was removed to allow any image format.
 
     final Completer<String?> completer = Completer();
+
+    // Resolve the image to check its dimensions
     final ImageStream stream = NetworkImage(
       url,
     ).resolve(ImageConfiguration.empty);
@@ -70,21 +71,25 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       (ImageInfo info, bool _) {
         final int width = info.image.width;
         final int height = info.image.height;
-        info.image.dispose();
+        info.image.dispose(); // Free up memory
+
+        // Size restriction logic (kept intact)
         if (width > maxRes || height > maxRes) {
           completer.complete("Image too large! Max is ${maxRes}px.");
         } else if (width < 200 || height < 200) {
           completer.complete("Image too small! Min is 200x200px.");
         } else {
-          completer.complete(null);
+          completer.complete(null); // Validation passed
         }
         stream.removeListener(listener);
       },
       onError: (dynamic exception, StackTrace? stackTrace) {
+        // Catches invalid links or unsupported formats that Flutter cannot render
         completer.complete("Could not load image. Check the link.");
         stream.removeListener(listener);
       },
     );
+
     stream.addListener(listener);
     return completer.future;
   }
@@ -143,6 +148,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         avatarUrl: _avatarController.text.trim(),
         bannerUrl: _bannerController.text.trim(),
       );
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'update_profile',
+            targetTable: 'profiles',
+            targetId: widget.user.id,
+          );
+
       if (mounted) Navigator.pop(context, true);
     } catch (e, stack) {
       SecureLogger.logError("EditProfilePage _saveInfo", e, stack);
@@ -328,7 +342,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
                 ),
-                validator: (val) => val!.isEmpty ? "Required" : null,
+                validator: (val) =>
+                    AppValidators.validateRequired(val, 'Display Name'),
               ),
               const SizedBox(height: 16),
               TextFormField(

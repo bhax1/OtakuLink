@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:otakulink/core/services/audit_service.dart';
 import '../../data/repositories/follow_repository.dart';
 
 class FollowController extends FamilyAsyncNotifier<bool, String> {
@@ -26,6 +27,13 @@ class FollowController extends FamilyAsyncNotifier<bool, String> {
 
     try {
       await repo.followUser(targetUserId);
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'follow_user',
+            targetTable: 'profiles',
+            targetId: targetUserId,
+          );
     } catch (e) {
       // Rollback on failure
       state = const AsyncValue.data(false);
@@ -42,6 +50,13 @@ class FollowController extends FamilyAsyncNotifier<bool, String> {
 
     try {
       await repo.unfollowUser(targetUserId);
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'unfollow_user',
+            targetTable: 'profiles',
+            targetId: targetUserId,
+          );
     } catch (e) {
       // Rollback on failure
       state = const AsyncValue.data(true);

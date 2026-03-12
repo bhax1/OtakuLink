@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:otakulink/features/discussions/domain/entities/discussion_entities.dart';
+import 'package:otakulink/core/utils/app_snackbar.dart';
 import 'package:otakulink/features/discussions/presentation/controllers/discussion_controller.dart';
 import 'discussion_page_widgets/discussion_tile.dart';
 import 'package:go_router/go_router.dart';
@@ -256,11 +257,10 @@ class _DiscussionPageState extends ConsumerState<DiscussionPage> {
       (previous, next) {
         if (next.errorMessage != null &&
             next.errorMessage != previous?.errorMessage) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(next.errorMessage!),
-              backgroundColor: theme.colorScheme.error,
-            ),
+          AppSnackBar.show(
+            context,
+            next.errorMessage!,
+            type: SnackBarType.error,
           );
         }
       },

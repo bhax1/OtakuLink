@@ -1,4 +1,5 @@
 import 'package:otakulink/core/services/reading_history_service.dart';
+import 'package:otakulink/core/services/audit_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:otakulink/features/manga/domain/entities/user_manga_entity.dart';
@@ -262,6 +263,15 @@ class MangaDetailsController
         _remoteLastReadId = null;
         _remoteLastChapterNum = null;
         _remoteLastReadPage = null;
+
+        ref
+            .read(auditServiceProvider)
+            .logAction(
+              action: 'remove_from_library',
+              targetTable: 'user_manga_list',
+              targetId: currentUser.id,
+              details: {'mangaId': mangaId, 'fullDelete': removeSocial},
+            );
       } else {
         // Partial update: Remove progress and status, but keep rating and comment
         // In our current schema, 'status' = null means it's effectively "removed" from active library
@@ -269,12 +279,14 @@ class MangaDetailsController
         // Actually, the user said "Deletes library entry, Deletes reading progress, Keeps rating and commentary"
         // If we delete the row, we lose rating/comment too.
         // So we should UPDATE the row to clear status and progress.
-        final rawTitle =
-            state.mangaDetails?.manga.titleEnglish ??
-            state.mangaDetails?.manga.titleRomaji ??
-            state.mangaDetails?.manga.titleDisplay ??
-            'Unknown';
-        final title = rawTitle.trim().isEmpty ? 'Unknown' : rawTitle;
+        final title = (state.mangaDetails?.manga.titleDisplay != 'Unknown')
+            ? state.mangaDetails!.manga.titleDisplay
+            : (state.mangaDetails?.manga.titleEnglish != 'Unknown'
+                ? state.mangaDetails?.manga.titleEnglish
+                : (state.mangaDetails?.manga.titleRomaji != 'Unknown'
+                    ? state.mangaDetails?.manga.titleRomaji
+                    : 'Unknown'));
+
 
         final updatedEntry = UserMangaEntry(
           userId: currentUser.id,
@@ -303,6 +315,15 @@ class MangaDetailsController
         _remoteLastReadId = null;
         _remoteLastChapterNum = null;
         _remoteLastReadPage = null;
+
+        ref
+            .read(auditServiceProvider)
+            .logAction(
+              action: 'remove_from_library',
+              targetTable: 'user_manga_list',
+              targetId: currentUser.id,
+              details: {'mangaId': mangaId, 'fullDelete': removeSocial},
+            );
       }
     } catch (e, stack) {
       SecureLogger.logError(
@@ -327,12 +348,14 @@ class MangaDetailsController
     state = state.copyWith(isSaving: true);
 
     try {
-      final rawTitle =
-          state.mangaDetails?.manga.titleEnglish ??
-          state.mangaDetails?.manga.titleRomaji ??
-          state.mangaDetails?.manga.titleDisplay ??
-          'Unknown';
-      final title = rawTitle.trim().isEmpty ? 'Unknown' : rawTitle;
+      final title = (state.mangaDetails?.manga.titleDisplay != 'Unknown')
+          ? state.mangaDetails!.manga.titleDisplay
+          : (state.mangaDetails?.manga.titleEnglish != 'Unknown'
+              ? state.mangaDetails?.manga.titleEnglish
+              : (state.mangaDetails?.manga.titleRomaji != 'Unknown'
+                  ? state.mangaDetails?.manga.titleRomaji
+                  : 'Unknown'));
+
 
       final repo = ref.read(userMangaRepositoryProvider);
 
@@ -359,6 +382,20 @@ class MangaDetailsController
       _origFavorite = state.isFavorite;
       _origStatus = state.status;
       _origComment = safeComment;
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'update_manga_entry',
+            targetTable: 'user_manga_list',
+            targetId: currentUser.id,
+            details: {
+              'mangaId': mangaId,
+              'status': state.status,
+              'rating': state.rating,
+              'isFavorite': state.isFavorite,
+            },
+          );
 
       state = state.copyWith(
         existsInUserList: state.status != null,

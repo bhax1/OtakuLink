@@ -21,15 +21,15 @@ class ProfilePage extends ConsumerWidget {
       return const LoginRequiredWidget(title: 'Profile');
     }
 
-    final profileAsyncValue = ref.watch(userProfileStreamProvider(uid));
+    final profileAsyncValue = ref.watch(userProfileFutureProvider(uid));
 
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(userProfileStreamProvider(uid));
+          ref.invalidate(userProfileFutureProvider(uid));
           ref.invalidate(recentActivityStreamProvider(uid));
           // Wait for a fresh value
-          await ref.read(userProfileStreamProvider(uid).future);
+          await ref.read(userProfileFutureProvider(uid).future);
         },
         child: profileAsyncValue.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -98,7 +98,7 @@ class ProfilePage extends ConsumerWidget {
                                           IconButton.filledTonal(
                                             onPressed: () {
                                               ref.invalidate(
-                                                userProfileStreamProvider(uid),
+                                                userProfileFutureProvider(uid),
                                               );
                                               ref.invalidate(
                                                 recentActivityStreamProvider(

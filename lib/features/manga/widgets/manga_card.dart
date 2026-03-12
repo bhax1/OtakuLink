@@ -61,6 +61,7 @@ class MangaCard extends StatelessWidget {
         titleMap?['display'] ??
         titleMap?['english'] ??
         titleMap?['romaji'] ??
+        titleMap?['native'] ??
         'Unknown';
 
     final coverMap = manga!['coverImage'];

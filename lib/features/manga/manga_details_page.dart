@@ -40,22 +40,7 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
     super.dispose();
   }
 
-  void _showDialog(String title, String msg) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(title),
-        content: Text(msg),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Removed _showDialog in favor of AppSnackBar
 
   void _showRemovalDialog(MangaDetailsState state) {
     showDialog(
@@ -122,19 +107,26 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
     if (state.isLoading) return;
 
     final manga = state.mangaDetails?.manga;
-    final title = manga?.titleEnglish ?? manga?.titleRomaji;
-    final cover = manga?.coverImageLarge;
-    final safeCover = MangaDetailsUtils.isValidSecureUrl(cover) ? cover : '';
-
-    if (title == null ||
-        title.toString().trim().isEmpty ||
-        title.toString().toLowerCase() == 'unknown') {
-      _showDialog("Unavailable", "Manga title is missing or invalid.");
+    final mangaDisplayTitle = manga?.titleDisplay ?? 'Unknown';
+    final searchTitle = 
+        (manga?.titleEnglish != null && manga!.titleEnglish != 'Unknown') 
+            ? manga.titleEnglish 
+            : (manga?.titleRomaji != null && manga!.titleRomaji != 'Unknown')
+                ? manga.titleRomaji
+                : mangaDisplayTitle;
+    if (searchTitle == 'Unknown' || searchTitle.trim().isEmpty) {
+      AppSnackBar.show(
+        context,
+        "Manga title is missing or invalid.",
+        type: SnackBarType.warning,
+      );
       return;
     }
-
+ 
     bool isDialogShowing = true;
     final navigator = Navigator.of(context);
+    final cover = manga?.coverImageLarge;
+    final safeCover = MangaDetailsUtils.isValidSecureUrl(cover) ? cover : '';
 
     showDialog(
       context: context,
@@ -144,14 +136,29 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
 
     try {
       final readerRepo = ref.read(readerRepositoryProvider);
-      final chapters = await readerRepo.fetchChapters(title);
+      final List<String> allTitles = [
+        if (manga?.titleEnglish != null) manga!.titleEnglish,
+        if (manga?.titleRomaji != null) manga!.titleRomaji,
+        if (manga?.titleNative != null) manga!.titleNative,
+        ...manga?.synonyms ?? [],
+      ];
+
+      final chapters = await readerRepo.fetchChapters(
+        searchTitle, 
+        dexId: manga?.exactMangaDexId,
+        titles: allTitles,
+      );
 
       if (!mounted) return;
       if (isDialogShowing) navigator.pop();
 
       // This safely catches the empty official-only chapters when pressing the main button
       if (chapters.isEmpty) {
-        _showDialog("No Chapters", "No chapters found for this manga yet.");
+        AppSnackBar.show(
+          context,
+          "No chapters found for this manga yet.",
+          type: SnackBarType.info,
+        );
         return;
       }
 
@@ -185,7 +192,7 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
           'initialChapterIndex': targetIndex,
           'allChapters': chapters,
           'mangaId': widget.mangaId.toString(),
-          'mangaTitle': title,
+          'mangaTitle': mangaDisplayTitle,
           'mangaCover': safeCover,
         },
       );
@@ -197,20 +204,32 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
       if (!mounted) return;
       if (isDialogShowing) navigator.pop();
       SecureLogger.logError("MangaDetailsPage _handleMainReadAction", e, stack);
-      _showDialog("Error", "Unable to load chapter. Please try again.");
+      AppSnackBar.show(
+        context,
+        "Unable to load chapter. Please try again.",
+        type: SnackBarType.error,
+      );
     }
   }
 
   Future<void> _handleOpenChapters(MangaDetailsState state) async {
     if (state.isLoading) return;
 
-    final title =
-        state.mangaDetails?.manga.titleEnglish ??
-        state.mangaDetails?.manga.titleRomaji;
-    if (title == null ||
-        title.toString().trim().isEmpty ||
-        title.toString().toLowerCase() == 'unknown') {
-      _showDialog("Unavailable", "Manga title is missing or invalid.");
+    final manga = state.mangaDetails?.manga;
+    final mangaDisplayTitle = manga?.titleDisplay ?? 'Unknown';
+    final searchTitle = 
+        (manga?.titleEnglish != null && manga!.titleEnglish != 'Unknown') 
+            ? manga.titleEnglish 
+            : (manga?.titleRomaji != null && manga!.titleRomaji != 'Unknown')
+                ? manga.titleRomaji
+                : mangaDisplayTitle;
+
+    if (searchTitle == 'Unknown' || searchTitle.trim().isEmpty) {
+      AppSnackBar.show(
+        context,
+        "Manga title is missing or invalid.",
+        type: SnackBarType.warning,
+      );
       return;
     }
 
@@ -225,8 +244,19 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
 
     try {
       final readerRepo = ref.read(readerRepositoryProvider);
-      SecureLogger.info("MangaDetailsPage: Fetching chapters for '$title'");
-      final chapters = await readerRepo.fetchChapters(title);
+      final List<String> allTitles = [
+        if (manga?.titleEnglish != null) manga!.titleEnglish,
+        if (manga?.titleRomaji != null) manga!.titleRomaji,
+        if (manga?.titleNative != null) manga!.titleNative,
+        ...manga?.synonyms ?? [],
+      ];
+
+      SecureLogger.info("MangaDetailsPage: Fetching chapters for '$searchTitle'");
+      final chapters = await readerRepo.fetchChapters(
+        searchTitle, 
+        dexId: manga?.exactMangaDexId,
+        titles: allTitles,
+      );
       SecureLogger.info(
         "MangaDetailsPage: Received ${chapters.length} chapters",
       );
@@ -256,7 +286,7 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
               '/manga/${widget.mangaId}/read/$index',
               extra: {
                 'allChapters': chapters,
-                'mangaTitle': title,
+                'mangaTitle': mangaDisplayTitle,
                 'mangaCover': safeCover,
               },
             );
@@ -271,7 +301,11 @@ class _MangaDetailsPageState extends ConsumerState<MangaDetailsPage> {
       if (!mounted) return;
       if (isDialogShowing) navigator.pop();
       SecureLogger.logError("MangaDetailsPage _handleOpenChapters", e, stack);
-      _showDialog("Error", "Unable to load chapters. Please try again later.");
+      AppSnackBar.show(
+        context,
+        "Unable to load chapters. Please try again later.",
+        type: SnackBarType.error,
+      );
     }
   }
 

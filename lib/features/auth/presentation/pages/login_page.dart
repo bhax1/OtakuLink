@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/utils/app_snackbar.dart';
+import '../../../../core/utils/validators.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/animations/login_animations.dart';
 import '../widgets/auth_widgets.dart';
@@ -154,8 +155,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                           AutofillHints.username,
                         ],
                         action: TextInputAction.next,
-                        validator: (v) =>
-                            (v == null || v.isEmpty) ? 'Required' : null,
+                        validator: AppValidators.validateLoginIdentifier,
                       ),
                     ),
                   ),
@@ -179,7 +179,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                         action: TextInputAction.done,
                         onSubmitted: (_) => _handleLogin(),
                         validator: (v) =>
-                            (v == null || v.isEmpty) ? 'Required' : null,
+                            AppValidators.validateRequired(v, 'Password'),
                       ),
                     ),
                   ),

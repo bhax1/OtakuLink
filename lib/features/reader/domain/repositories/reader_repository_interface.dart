@@ -1,6 +1,10 @@
 abstract class ReaderRepositoryInterface {
   /// Fetches the list of chapters for a given manga title/dexId
-  Future<List<Map<String, dynamic>>> fetchChapters(String mangaIdOrTitle);
+  Future<List<Map<String, dynamic>>> fetchChapters(
+    String mangaIdOrTitle, {
+    String? dexId,
+    List<String> titles = const [],
+  });
 
   /// Fetches the image URLs for a specific chapter
   Future<List<String>> fetchChapterPages(String chapterId);

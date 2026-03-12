@@ -7,6 +7,7 @@ import 'package:otakulink/features/profile/domain/entities/profile_entities.dart
 import 'package:otakulink/core/utils/app_snackbar.dart';
 import 'package:otakulink/core/utils/secure_logger.dart';
 import 'package:otakulink/features/settings/providers/settings_provider.dart';
+import 'package:otakulink/core/services/audit_service.dart';
 
 class EditTopPicksPage extends ConsumerStatefulWidget {
   final String userId;
@@ -63,6 +64,15 @@ class _EditTopPicksPageState extends ConsumerState<EditTopPicksPage> {
     try {
       final cleanList = _slots.whereType<TopPickEntity>().toList();
       await ref.read(profileRepositoryProvider).updateTopPicks(cleanList);
+
+      ref
+          .read(auditServiceProvider)
+          .logAction(
+            action: 'update_top_picks',
+            targetTable: 'profiles',
+            targetId: widget.userId,
+          );
+
       if (mounted) {
         AppSnackBar.show(
           context,

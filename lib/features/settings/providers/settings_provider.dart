@@ -3,13 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:otakulink/core/providers/shared_prefs_provider.dart';
+import 'package:otakulink/core/services/audit_service.dart';
 
 class SettingsState {
   final ThemeMode themeMode;
   final bool showAdultContent;
 
   const SettingsState({
-    this.themeMode = ThemeMode.system,
+    this.themeMode = ThemeMode.light,
     this.showAdultContent = false,
   });
 
@@ -34,7 +35,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final themeIndex = _prefs.getInt(_themeKey);
     final themeMode = themeIndex != null
         ? ThemeMode.values[themeIndex]
-        : ThemeMode.system;
+        : ThemeMode.light;
 
     final showAdultContent = _prefs.getBool(_adultContentKey) ?? false;
 
@@ -52,6 +53,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> toggleAdultContent(bool show) async {
     await _prefs.setBool(_adultContentKey, show);
     state = state.copyWith(showAdultContent: show);
+
+    ref
+        .read(auditServiceProvider)
+        .logAction(action: 'toggle_adult_content', details: {'enabled': show});
   }
 }
 

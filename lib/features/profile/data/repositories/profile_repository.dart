@@ -130,7 +130,7 @@ class ProfileRepository implements ProfileRepositoryInterface {
   Stream<List<LibraryEntryEntity>> getRecentActivityStream(String uid) {
     return _client
         .from('user_manga_list')
-        .stream(primaryKey: ['user_id', 'manga_id'])
+        .stream(primaryKey: ['id'])
         .eq('user_id', uid)
         .order('updated_at')
         .limit(10)
@@ -176,7 +176,7 @@ class ProfileRepository implements ProfileRepositoryInterface {
   }) {
     return _client
         .from('user_manga_list')
-        .stream(primaryKey: ['user_id', 'manga_id'])
+        .stream(primaryKey: ['id'])
         .eq('user_id', uid)
         .asyncMap((event) async {
           var filtered = event.where((e) {
@@ -231,13 +231,86 @@ class ProfileRepository implements ProfileRepositoryInterface {
   }
 
   @override
+  Future<List<LibraryEntryEntity>> getLibrary({
+    required String uid,
+    String? status,
+    bool favoritesOnly = false,
+    String sortBy = 'updated_at',
+    bool ascending = false,
+    required int limit,
+  }) async {
+    try {
+      var query = _client
+          .from('user_manga_list')
+          .select('*, mangas(id, title, cover_url)')
+          .eq('user_id', uid);
+
+      if (status != null) {
+        query = query.eq('status', status);
+      }
+
+      if (favoritesOnly) {
+        query = query.eq('is_favorite', true);
+      }
+
+      // Supabase sorting
+      String dbSortField = 'updated_at';
+      if (sortBy == 'Title') {
+        // Unfortunately sorting by joined table column in Supabase is tricky via select
+        // We might still need to sort in memory if sortBy is title
+      } else if (sortBy == 'Rating') {
+        dbSortField = 'rating';
+      }
+
+      final List data = await query
+          .order(dbSortField, ascending: ascending)
+          .limit(limit);
+
+      if (data.isEmpty) {
+        return [];
+      }
+
+      var results = data.map((e) {
+        final mangaInfo = e['mangas'];
+        return LibraryEntryEntity(
+          id: e['id'].toString(),
+          mangaId: e['manga_id'].toString(),
+          title: mangaInfo != null
+              ? mangaInfo['title'] ?? 'Unknown'
+              : 'Unknown',
+          imageUrl: mangaInfo != null ? mangaInfo['cover_url'] : null,
+          rating: double.tryParse(e['rating']?.toString() ?? '0') ?? 0.0,
+          isFavorite: e['is_favorite'] == true,
+          status: e['status'] as String? ?? 'Reading',
+          lastChapterRead:
+              double.tryParse(e['last_chapter_num']?.toString() ?? '0') ?? 0.0,
+          updatedAt: DateTime.parse(
+            e['updated_at'] ?? DateTime.now().toIso8601String(),
+          ),
+        );
+      }).toList();
+
+      // Memory sort for Title if requested
+      if (sortBy == 'Title') {
+        results.sort((a, b) => a.title.compareTo(b.title));
+        if (!ascending) results = results.reversed.toList();
+      }
+
+      return results;
+    } catch (e, stack) {
+      SecureLogger.logError("ProfileRepository.getLibrary", e, stack);
+      return [];
+    }
+  }
+
+  @override
   Stream<List<LibraryEntryEntity>> getReviewsStream(
     String uid, {
     required int limit,
   }) {
     return _client
         .from('user_manga_notes')
-        .stream(primaryKey: ['user_id', 'manga_id'])
+        .stream(primaryKey: ['id'])
         .eq('user_id', uid)
         .asyncMap((event) async {
           var filtered = event
@@ -271,11 +344,12 @@ class ProfileRepository implements ProfileRepositoryInterface {
             final mangaInfo = mangaMap[e['manga_id']];
             final libInfo = listMap[e['manga_id']];
             return LibraryEntryEntity(
-              id: e['manga_id'].toString(),
+              id: e['id'].toString(),
               mangaId: e['manga_id'].toString(),
               title: mangaInfo?['title'] ?? 'Review',
               imageUrl: mangaInfo?['cover_url'],
-              rating: (libInfo?['rating'] as num?)?.toDouble() ?? 0.0,
+              rating:
+                  double.tryParse(libInfo?['rating']?.toString() ?? '0') ?? 0.0,
               status: libInfo?['status'] as String? ?? 'Reading',
               updatedAt: DateTime.parse(
                 e['updated_at'] ?? DateTime.now().toIso8601String(),
@@ -284,6 +358,58 @@ class ProfileRepository implements ProfileRepositoryInterface {
             );
           }).toList();
         });
+  }
+
+  @override
+  Future<List<LibraryEntryEntity>> getReviews(
+    String uid, {
+    required int limit,
+  }) async {
+    try {
+      // 1. Fetch reviews (notes) and manga metadata
+      final notesResponse = await _client
+          .from('user_manga_notes')
+          .select('*, mangas(id, title, cover_url)')
+          .eq('user_id', uid)
+          .not('notes', 'is', null)
+          .order('updated_at', ascending: false)
+          .limit(limit);
+
+      if ((notesResponse as List).isEmpty) return [];
+
+      final List filtered = notesResponse as List;
+      final mangaIds = filtered.map((e) => e['manga_id'] as int).toList();
+
+      // 2. Fetch corresponding library stats (rating, status)
+      final listData = await _client
+          .from('user_manga_list')
+          .select('manga_id, rating, status')
+          .eq('user_id', uid)
+          .inFilter('manga_id', mangaIds);
+
+      final listMap = {for (var l in listData) l['manga_id'] as int: l};
+
+      // 3. Combine in memory
+      return filtered.map((e) {
+        final mangaInfo = e['mangas'];
+        final libInfo = listMap[e['manga_id']];
+        return LibraryEntryEntity(
+          id: e['id'].toString(),
+          mangaId: e['manga_id'].toString(),
+          title: mangaInfo?['title'] ?? 'Review',
+          imageUrl: mangaInfo?['cover_url'],
+          rating: double.tryParse(libInfo?['rating']?.toString() ?? '0') ?? 0.0,
+          status: libInfo?['status'] as String? ?? 'Reading',
+          updatedAt: DateTime.parse(
+            e['updated_at'] ?? DateTime.now().toIso8601String(),
+          ),
+          commentary: e['notes'],
+        );
+      }).toList();
+    } catch (e, stack) {
+      SecureLogger.logError("ProfileRepository.getReviews", e, stack);
+      return [];
+    }
   }
 
   // --- MAPPERS ---

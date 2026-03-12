@@ -8,6 +8,7 @@ import 'package:otakulink/core/services/local_cache_service.dart';
 import 'package:otakulink/core/utils/secure_logger.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:otakulink/routes/app_router.dart';
+import 'package:otakulink/core/services/audit_service.dart';
 
 class SettingPage extends ConsumerWidget {
   const SettingPage({super.key});
@@ -111,6 +112,10 @@ class SettingPage extends ConsumerWidget {
                   try {
                     await DefaultCacheManager().emptyCache();
                     await LocalCacheService.clearAllCache();
+
+                    ref
+                        .read(auditServiceProvider)
+                        .logAction(action: 'clear_cache');
 
                     // Also reload settings in case they were cached or we need a clean start
                     ref.invalidate(settingsProvider);

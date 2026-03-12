@@ -21,15 +21,13 @@ class _ReviewsTabState extends ConsumerState<ReviewsTab> {
   @override
   Widget build(BuildContext context) {
     final profileRepo = ref.watch(profileRepositoryProvider);
-    final reviewsStream = profileRepo.getReviewsStream(
-      widget.userId,
-      limit: _currentLimit,
-    );
-    const bool isDataSaver = false;
-
-    return StreamBuilder<List<LibraryEntryEntity>>(
-      stream: reviewsStream,
+    return FutureBuilder<List<LibraryEntryEntity>>(
+      future: profileRepo.getReviews(
+        widget.userId,
+        limit: _currentLimit,
+      ),
       builder: (context, snapshot) {
+        const bool isDataSaver = false;
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());

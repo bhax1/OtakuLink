@@ -5,6 +5,7 @@ class MangaModel extends MangaEntity {
     required super.id,
     required super.titleEnglish,
     required super.titleRomaji,
+    required super.titleNative,
     required super.titleDisplay,
     super.coverImageLarge,
     super.coverImageMedium,
@@ -14,6 +15,7 @@ class MangaModel extends MangaEntity {
     required super.status,
     required super.year,
     super.genres,
+    super.synonyms,
     super.chapters,
     super.exactMangaDexId,
   });
@@ -52,10 +54,12 @@ class MangaModel extends MangaEntity {
       id: json['id'] as int,
       titleEnglish: titleMap?['english']?.toString() ?? 'Unknown',
       titleRomaji: titleMap?['romaji']?.toString() ?? 'Unknown',
+      titleNative: titleMap?['native']?.toString() ?? 'Unknown',
       titleDisplay:
           titleMap?['display']?.toString() ??
           titleMap?['english']?.toString() ??
           titleMap?['romaji']?.toString() ??
+          titleMap?['native']?.toString() ??
           'Unknown',
       coverImageLarge: coverLarge,
       coverImageMedium: coverMedium,
@@ -66,6 +70,11 @@ class MangaModel extends MangaEntity {
       year: yearString,
       genres:
           (json['genres'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      synonyms:
+          (json['synonyms'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],

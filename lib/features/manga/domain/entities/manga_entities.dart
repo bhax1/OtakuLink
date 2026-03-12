@@ -2,6 +2,7 @@ class MangaEntity {
   final int id;
   final String titleEnglish;
   final String titleRomaji;
+  final String titleNative;
   final String titleDisplay;
   final String? coverImageLarge;
   final String? coverImageMedium;
@@ -11,6 +12,7 @@ class MangaEntity {
   final String status;
   final String year;
   final List<String> genres;
+  final List<String> synonyms;
   final int? chapters;
   final String? exactMangaDexId;
 
@@ -18,6 +20,7 @@ class MangaEntity {
     required this.id,
     required this.titleEnglish,
     required this.titleRomaji,
+    required this.titleNative,
     required this.titleDisplay,
     this.coverImageLarge,
     this.coverImageMedium,
@@ -27,6 +30,7 @@ class MangaEntity {
     required this.status,
     required this.year,
     this.genres = const [],
+    this.synonyms = const [],
     this.chapters,
     this.exactMangaDexId,
   });
